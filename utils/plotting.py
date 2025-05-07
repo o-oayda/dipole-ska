@@ -1,47 +1,125 @@
 from numpy.typing import NDArray
+from matplotlib import Axes, Figure
 import numpy as np
 import healpy as hp
 from utils.physics import omega_to_theta
+from matplotlib.colors import ListedColormap
+import matplotlib.pyplot as plt
 
 class MapPlotter:
     def __init__(self, density_map: NDArray[np.int_]) -> None:
         self.density_map = density_map
         self.default_settings = {
             'graticule': True,
-            'graticule_labels': True
+            'graticule_labels': True,
+            'phi_convention': 'counterclockwise',
+            'graticule_color': 'black',
+            'longitude_grid_spacing': 90, 
+            'latitude_grid_spacing': 45,
+            'badcol':'white',
+            'fontsize':{'title':'18','xtick_label':'15','ytick_label':'15'},
+            'custom_xtick_labels': ["$90^\circ$","$0^\circ$","$270^\circ$",],
+            'custom_ytick_labels': ["$-45^\circ$","$0^\circ$","$45^\circ$"]
         }
 
-    def plot_density_map(self, **projview_kwargs) -> None:
-        hp.projview(
-            self.density_map,
-            {
-                **self.default_settings,
-                **projview_kwargs
-            }
-        )
-
-    def plot_smooth_map(self,
-                moving_average_kwargs: dict = {},
-                projview_kwargs: dict = {}
-        ) -> None:
+    def plot_density_map(self, #self, **projview_kwargs) -> None:
+                        cmap:str,
+                        cbar_orientation: str,
+                        frames: str,
+                        projview_kwargs: dict = {},
+                        cmap_alpha: float=1.0,
+        ) ->  tuple[Axes, Figure]:
         '''
         Plot map smoothed with a moving average.
-
+        :param cbar_orientation: Orientation of the colorbar.
+            Can be 'horizontal' or 'vertical'.
+        :param frames: Coordinate system to use for the plot. 
+            Can be 'C' for Equatorial, 'G' for Galactic, 
+            'CG' for transforming frame from Equatorial to Galactic, 
+            or 'GC' for transforming frame from Galactic to Equatorial.
+        :param projview_kwargs: Keyword arguments to pass to `hp.projview`.
+        :param cmap_alpha: Transparency of the colormap.
+            0.0 is fully transparent, 1.0 is fully opaque.
+        '''
+        # hp.projview(
+        #     self.density_map,
+        #     {
+        #         **self.default_settings,
+        #         **projview_kwargs
+        #     }
+        # )
+        if 'title' in projview_kwargs:
+            map_title = projview_kwargs['title']
+        else:
+            map_title = 'Density map'
+        hp.projview(map,
+                    {**self.default_settings, 
+                     **projview_kwargs},
+                    title=map_title,
+                    cmap=self.cmap_scaled(cmap, alpha=cmap_alpha),
+                    cb_orientation=cbar_orientation,
+                    coord=frames,
+                    override_plot_properties={'vertical_tick_rotation':True 
+                                              if cbar_orientation=='vertical' 
+                                              else False,'cbar_shrink':1 
+                                              if cbar_orientation=='vertical' 
+                                              else 0.5},
+                    )
+        return plt.gca(),plt.gcf()
+    
+    
+    def plot_smooth_map(self,
+                        cmap:str,
+                        cbar_orientation: str,
+                        frames: str,
+                        moving_average_kwargs: dict = {},
+                        projview_kwargs: dict = {},
+                        cmap_alpha: float = 1.0,
+        ) ->  tuple[Axes, Figure]:
+        '''
+        Plot map smoothed with a moving average.
+        :param cbar_orientation: Orientation of the colorbar.
+            Can be 'horizontal' or 'vertical'.
+        :param frames: Coordinate system to use for the plot. 
+            Can be 'C' for Equatorial, 'G' for Galactic, 
+            'CG' for transforming frame from Equatorial to Galactic, 
+            or 'GC' for transforming frame from Galactic to Equatorial.
         :param moving_average_kwargs: Keyword arguments to pass to
             `MapPlotter.moving_average_smooth`.
         :param projview_kwargs: Keyword arguments to pass to `hp.projview`.
+        :param cmap_alpha: Transparency of the colormap.
+            0.0 is fully transparent, 1.0 is fully opaque.
         '''
         self.smoothed_map = self.moving_average_smooth(
             self.density_map,
             **moving_average_kwargs
         )
-        hp.projview(
-            self.smoothed_map,
-            {
-                **self.default_settings,
-                **projview_kwargs
-            }
-        )
+        # hp.projview(
+        #     self.smoothed_map,
+        #     {
+        #         **self.default_settings,
+        #         **projview_kwargs
+        #     }
+        # )
+        if 'title' in projview_kwargs:
+            map_title = projview_kwargs['title']
+        else:
+            map_title = 'Density map smoothed with moving average over'
+            +str(moving_average_kwargs.get('angle_scale'))+' steradians'
+        hp.projview(map,
+                    {**self.default_settings, 
+                     **projview_kwargs},
+                    title=map_title,
+                    cmap=self.cmap_scaled(cmap, alpha=cmap_alpha),
+                    cb_orientation=cbar_orientation,
+                    coord=frames,
+                    override_plot_properties={'vertical_tick_rotation':True 
+                                              if cbar_orientation=='vertical' 
+                                              else False,'cbar_shrink':1 
+                                              if cbar_orientation=='vertical' 
+                                              else 0.5},
+                    )
+        return plt.gca(),plt.gcf()
 
     @staticmethod
     def moving_average_smooth(
@@ -79,3 +157,19 @@ class MapPlotter:
             smoothed_map[pixel_index] = np.nanmean(density_map[disc] * weights[disc])
 
         return smoothed_map
+
+    def cmap_scaled(
+                    cmap: str,
+                    alpha: float,
+                    ) -> ListedColormap:
+        '''
+        Enhance the transparency of a colormap.
+        :param cmap: Colormap to enhance.
+        :param alpha: Transparency of the colormap.
+            0.0 is fully transparent, 1.0 is fully opaque.
+        '''
+        my_cmap = cmap(np.arange(cmap.N))
+        my_cmap[:,0:3] *= alpha
+        my_cmap[:,0:3] += np.array([1,1,1])*(1-alpha)
+        my_cmap = ListedColormap(my_cmap)
+        return my_cmap
