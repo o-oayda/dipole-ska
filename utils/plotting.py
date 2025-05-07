@@ -14,7 +14,7 @@ class MapPlotter:
             'cbar': True,
             'cb_orientation': 'vertical',
             'phi_convention': 'counterclockwise',
-            'badcol':'white',
+            'badcolor':'white',
             'fontsize':{'title':'18','xtick_label':'15','ytick_label':'15'},
         }
 
