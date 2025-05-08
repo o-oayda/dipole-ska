@@ -37,8 +37,14 @@ class MapLoader:
             f'data/ska/briggs_{self.briggs_weighting}/{self.configuration}'
         )
         self.file_name = f'map_{self.map_number}.fits'
-        self.density_map = hp.read_map(
+        try:
+            self.density_map = hp.read_map(
             f'{self.file_path}/{self.file_name}',
             nest=False
-        )
-        return self.density_map
+            )
+            return self.density_map
+        except OSError:
+            print(' Corrupted file. File details are as follows: \n Briggs weighting: '
+                f'{self.briggs_weighting} \n Configuration: {self.configuration} \n '
+                f'Map number: {self.map_number}')
+            return None
