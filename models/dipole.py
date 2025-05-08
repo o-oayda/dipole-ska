@@ -68,7 +68,70 @@ class Likelihood:
         '''
         return self.prior.transform(uniform_deviates)
 
-class Dipole(Likelihood, Inference):
+class MapModel:
+    def __init__(self):
+        pass
+
+    def _get_healpy_map_attributes(self) -> None:
+        '''
+        Retrieve key properties of a healpix map.
+        '''
+        self.mean_density = np.nanmean(self.density_map)
+        self.nside = hp.get_nside(self.density_map)
+        self.npix = hp.nside2npix(self.nside)
+        pixels_x, pixels_y, pixels_z = hp.pix2vec(
+            self.nside,
+            np.arange(self.npix)
+        )
+        # this will have shape (n_pixels, 3)
+        self.pixel_vectors = np.stack([pixels_x, pixels_y, pixels_z]).T
+    
+    def _parse_prior_choice(self,
+            default_prior: str,
+            prior: Prior | None = None
+        ) -> None:
+        '''
+        Switch to a default prior if the user has not specified one, or use
+        the explicit one the user has provided.
+        '''
+        if prior is None:
+            self.prior = Prior(choose_default=default_prior)
+        else:
+            self.prior = prior
+    
+    def _parse_likelihood_choice(self,
+            likelihood: Literal['point', 'poisson']
+        ) -> None:
+        '''
+        If one specifies the point-by-point likelihood, we don't need to fit
+        for the mean density. This function removes that parameter from the
+        list of priors and parameter names, reducing the dimension of the model
+        by 1.
+        
+        In addition, if one chooses the Poisson likelihood, we ideally
+        want the choice of mean density prior to center around the mean density
+        itself. This automatically makes that change without needing explicit
+        input from the user.
+        '''
+        self.likelihood = likelihood
+
+        if self.likelihood == 'point':
+            self.prior.remove_prior(prior_index=0)
+        elif self.likelihood == 'poisson':
+            self.prior.change_prior(
+                prior_index=0,
+                new_prior=[
+                    'Uniform',
+                    0.75 * self.mean_density,
+                    1.25 * self.mean_density
+                ]
+            )
+        else:
+            raise Exception(
+                f'Likelihood choice ({self.likelihood}) not recognised.'
+            )
+
+class Dipole(Likelihood, Inference, MapModel):
     def __init__(self,
             density_map: NDArray[np.int_],
             prior: Prior | None = None,
@@ -106,66 +169,10 @@ class Dipole(Likelihood, Inference):
         '''
         self.density_map = density_map
         self._get_healpy_map_attributes()
-        self._parse_prior_choice(prior)
+        self._parse_prior_choice(default_prior='dipole', prior=prior)
         self._parse_likelihood_choice(likelihood)
         self.parameter_names = self.prior.parameter_names
         self.ndim = self.prior.ndim
-    
-    def _get_healpy_map_attributes(self) -> None:
-        '''
-        Retrieve key properties of a healpix map.
-        '''
-        self.mean_density = np.nanmean(self.density_map)
-        self.nside = hp.get_nside(self.density_map)
-        self.npix = hp.nside2npix(self.nside)
-        pixels_x, pixels_y, pixels_z = hp.pix2vec(
-            self.nside,
-            np.arange(self.npix)
-        )
-        # this will have shape (n_pixels, 3)
-        self.pixel_vectors = np.stack([pixels_x, pixels_y, pixels_z]).T
-
-    def _parse_prior_choice(self, prior: Prior | None = None) -> None:
-        '''
-        Switch to a default prior if the user has not specified one, or use
-        the explicit one the user has provided.
-        '''
-        if prior is None:
-            self.prior = Prior(choose_default='dipole')
-        else:
-            self.prior = prior
-
-    def _parse_likelihood_choice(self,
-            likelihood: Literal['point', 'poisson']
-        ) -> None:
-        '''
-        If one specifies the point-by-point likelihood, we don't need to fit
-        for the mean density. This function removes that parameter from the
-        list of priors and parameter names, reducing the dimension of the model
-        by 1.
-        
-        In addition, if one chooses the Poisson likelihood, we ideally
-        want the choice of mean density prior to center around the mean density
-        itself. This automatically makes that change without needing explicit
-        input from the user.
-        '''
-        self.likelihood = likelihood
-
-        if self.likelihood == 'point':
-            self.prior.remove_prior(prior_index=0)
-        elif self.likelihood == 'poisson':
-            self.prior.change_prior(
-                prior_index=0,
-                new_prior=[
-                    'Uniform',
-                    0.75 * self.mean_density,
-                    1.25 * self.mean_density
-                ]
-            )
-        else:
-            raise Exception(
-                f'Likelihood choice ({self.likelihood}) not recognised.'
-            )
 
     def log_likelihood(self,
             Theta: NDArray[np.float64]
