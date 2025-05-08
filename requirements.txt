@@ -8,3 +8,5 @@ PyYAML==6.0.2
 matplotlib==3.7.5
 ultranest
 scipy
+h5py
+ipywidgets
