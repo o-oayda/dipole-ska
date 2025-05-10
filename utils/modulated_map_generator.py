@@ -14,15 +14,13 @@ class ModulatedMapGenerator:
                 dipole_latitude: float,
     ):
         '''
-        Class for creating dipole modulated sky maps by sampling from the 
-        mean power spectrum of a sepcific configuration of the SKA maps.
+        Class for injecting dipole modulation into SKA maps.
 
         :param briggs_weighting: Briggs weighting used to generate the map.
         :param configuration: SKA telescope configuration used to generate the map.
-        :param dipole_amplitude: Amplitude of the modulating.
+        :param dipole_amplitude: Amplitude of the dipole.
         :param dipole_longitude: Longitude of the dipole. Input in degrees.
         :param dipole_latitude: Latitude of the dipole. Input in degrees.
-        
         '''
         self.briggs_weighting = briggs_weighting
         self.configuration = configuration
@@ -30,77 +28,56 @@ class ModulatedMapGenerator:
         self.dipole_longitude = dipole_longitude
         self.dipole_latitude = dipole_latitude
 
-    def dipole_alm(self,
+    def dipole_map(self,
                    nside: int,
                    ) -> NDArray[np.complex_]:
         '''
-        Perform spherical harmonic decomposition of a dipole modulated sky.
+        Calcuate the dipolar modulation map for an NSIDE, and the dipole parameters.
         
         :param nside: NSIDE for the dipole map.
         
-        :return: array of alm coefficients for a dipole map.
+        :return: An all-sky map of dipolar modulation.
         '''
-        vectors = hp.pix2vec(nside,[i for i in range(hp.nside2npix(nside))])
-        dipole = self.dipole_amplitude * self.spherical2cartersian(self.dipole_longitude, 
-                                                                   self.dipole_latitude)
-        dipole_map = 1 + np.dot(dipole, [vectors[0],vectors[1],vectors[2]])
-        dipole_alm = hp.map2alm(dipole_map)
-        return dipole_alm
+        pixel_vectors = hp.pix2vec(nside, np.arange(hp.nside2npix(nside)))
+        dipole = self.dipole_amplitude * hp.ang2vec(self.dipole_longitude,
+                                                    self.dipole_latitude,lonlat=True)
+        stacked_vectors = np.vstack(pixel_vectors).T
+        dipole_map = 1+np.dot(stacked_vectors,dipole)
+        return dipole_map
     
     
-    def modulated_maps(self,
-                      map_counts: int,
-                      lower_limit: int = 0,
-                      upper_limit: int = 200,
+    def modulated_map(self,
+                      map_number: int,
+                      l_max_input: int | None = None,
+                      scaling_factor: float = 100,
                       ) -> NDArray[np.float_]:
         '''
-        Generate a set of dipole modulated skies for a particular SKA configuration.
-        The maps are not scaled to the correct mean number density right now.
-        Someone should add this.
+        Generate a dipole modulated sky from an SKA map.
         
-        :param map_counts: Number of maps to generate.
-        :param lower_limit: Lower limit of the range of maps being used.
-        :param upper_limit: Upper limit of the range of maps being used.
+        :param map_number: Number appearing in fits file, e.g. `map_1.fits`
+            refers to map 1.
+        :param l_max_input: The highest multiple to generate during the spherical 
+            harmonic decomposition of the map. The default is 3 * nside - 1.
+        :param scaling factor: The factor by which alm's have to be scaled before
+            modulating the map. Used to ensure we have large enough numbers that 
+            we don't lose the dipole in the in the poisson draw The default is 100.
         
-        For example, if you only want to use the first 100 maps, you can set your lower
-        limit to 0 and your upper limit to 100. 
-        
-        :return: array of dipole modulated all-sky maps.
+        :return: Dipole modulated Healpy density map.
         '''
-        maps_raw_list = [MapLoader(self.briggs_weighting,self.configuration).load(i) 
-                         for i in range(lower_limit, upper_limit)]
-        maps_cleaned_list = [item for item in maps_raw_list if item is not None]
-        nside = hp.npix2nside(len(maps_cleaned_list[0]))
-        
-        maps_alm = np.array([hp.map2alm(item) for item in maps_cleaned_list])
-        mean_alm = np.mean(maps_alm, axis=0)
-        
-        modulated_maps = np.empty((map_counts, hp.nside2npix(nside)), dtype=np.float_)
-        for i in range(map_counts):
-            random_phase = np.exp(np.random.uniform(0,2*np.pi,mean_alm.shape[0])*1.0j)
-            modulation = np.imag(mean_alm)*random_phase
-            new_alm = np.real(mean_alm) + np.real(modulation) + (np.imag(modulation)*1.0j)
-            mods = new_alm + self.dipole_alm(nside)
-            unscaled_map = hp.alm2map(mods,nside)
-            #Please scale the unscaled_map to the correct mean number density.
-            #use the scaled_map as argument for the poisson distribution generator.
-            modulated_maps[i] = np.random.poisson(unscaled_map)
-        return modulated_maps
-    
-    @staticmethod
-    def spherical2cartersian(input_lon: float,
-                             input_lat: float
-                             ) -> NDArray[np.float_]:
-        '''
-        Convert directions to cartesian unit vectors.
-        
-        :param input_lon: Longitude in degrees.
-        :param input_lat: Latitude in degrees.
-        
-        :return: 3D cartesian unit vector.
-        '''
-        lon,lat = np.deg2rad(input_lon),np.deg2rad(input_lat)
-        x = np.cos(lon) * np.cos(lat)
-        y = np.sin(lon) * np.cos(lat)
-        z = np.sin(lat)
-        return np.array([x,y,z])
+        ska_map = MapLoader(self.briggs_weighting,self.configuration).load(map_number)
+        if ska_map is not None:
+            nside = hp.npix2nside(len(ska_map))
+            if l_max_input is None:
+                l_max = 3 * nside - 1
+            else:
+                l_max = l_max_input
+            alm = hp.map2alm(ska_map, lmax=l_max)
+            scaled_alm = scaling_factor * alm
+            reconstructed_map = hp.alm2map( scaled_alm, lmax=l_max , nside=nside)
+            dipole_modulation = self.dipole_map(nside)
+            modulated_map = reconstructed_map * dipole_modulation
+            final_map = np.random.poisson(modulated_map/scaling_factor)
+            return final_map
+        else:
+            print(' Please check the file with above details.')
+            return None
