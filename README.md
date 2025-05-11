@@ -44,4 +44,5 @@ model.prior.plot_priors()
 
 # results are by default saved in ultranest_logs/
 model.run_nested_sampling()
+model.corner_plot()
 ```

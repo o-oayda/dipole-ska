@@ -6,6 +6,7 @@ from typing import Literal
 from models.priors import Prior
 import healpy as hp
 from utils.math import compute_dipole_signal
+from utils.posterior import Posterior
 
 class Likelihood:
     def __init__(self):
@@ -131,7 +132,7 @@ class MapModel:
                 f'Likelihood choice ({self.likelihood}) not recognised.'
             )
 
-class Dipole(Likelihood, Inference, MapModel):
+class Dipole(Likelihood, Inference, MapModel, Posterior):
     def __init__(self,
             density_map: NDArray[np.int_],
             prior: Prior | None = None,

@@ -42,7 +42,7 @@ class Inference:
         if step:
             self._switch_to_step_sampling(n_steps)
         
-        self.ultranest_sampler.run(**run_kwargs)
+        self.results = self.ultranest_sampler.run(**run_kwargs)
         self.ultranest_sampler.print_results()
 
         # there is an issue with ultranest plotting when the log likelihood is
@@ -53,7 +53,8 @@ class Inference:
         except ValueError as e:
             print(e)
         
-        self.results = self.ultranest_sampler.results
+        self.samples = self.results['samples']
+        self.log_bayesian_evidence = self.results['logz']
 
     def _switch_to_step_sampling(self, n_steps: int | None = None) -> None:
         if n_steps is None:
