@@ -7,7 +7,8 @@ from utils.map_read import MapLoader
 
 class ModulatedMapGenerator:
     def __init__(self,
-                 briggs_weighting: Literal[-1, 0, 1],
+                density_map: NDArray[np.int_], 
+                briggs_weighting: Literal[-1, 0, 1],
                 configuration: Literal['AA', 'AA4'],
                 dipole_amplitude: float,
                 dipole_longitude: float,
@@ -16,12 +17,14 @@ class ModulatedMapGenerator:
         '''
         Class for injecting dipole modulation into SKA maps.
 
+        :param density_map: Healpy density map onto which modulations are done.
         :param briggs_weighting: Briggs weighting used to generate the map.
         :param configuration: SKA telescope configuration used to generate the map.
         :param dipole_amplitude: Amplitude of the dipole.
         :param dipole_longitude: Longitude of the dipole. Input in degrees.
         :param dipole_latitude: Latitude of the dipole. Input in degrees.
         '''
+        self.density_map = density_map
         self.briggs_weighting = briggs_weighting
         self.configuration = configuration
         self.dipole_amplitude = dipole_amplitude
@@ -47,15 +50,12 @@ class ModulatedMapGenerator:
     
     
     def modulated_map(self,
-                      map_number: int,
                       l_max_input: int | None = None,
                       scaling_factor: float = 100,
                       ) -> NDArray[np.float_]:
         '''
         Generate a dipole modulated sky from an SKA map.
         
-        :param map_number: Number appearing in fits file, e.g. `map_1.fits`
-            refers to map 1.
         :param l_max_input: The highest multiple to generate during the spherical 
             harmonic decomposition of the map. The default is 3 * nside - 1.
         :param scaling factor: The factor by which alm's have to be scaled before
@@ -64,20 +64,19 @@ class ModulatedMapGenerator:
         
         :return: Dipole modulated Healpy density map.
         '''
-        ska_map = MapLoader(self.briggs_weighting,self.configuration).load(map_number)
-        if ska_map is not None:
-            nside = hp.npix2nside(len(ska_map))
+        if self.density_map is not None:
+            nside = hp.npix2nside(len(self.density_map))
             if l_max_input is None:
                 l_max = 3 * nside - 1
             else:
                 l_max = l_max_input
-            alm = hp.map2alm(ska_map, lmax=l_max)
+            alm = hp.map2alm(self.density_map, lmax=l_max)
             scaled_alm = scaling_factor * alm
-            reconstructed_map = hp.alm2map( scaled_alm, lmax=l_max , nside=nside)
+            reconstructed_map = hp.alm2map(scaled_alm, lmax=l_max , nside=nside)
             dipole_modulation = self.dipole_map(nside)
             modulated_map = reconstructed_map * dipole_modulation
             final_map = np.random.poisson(modulated_map/scaling_factor)
             return final_map
         else:
-            print(' Please check the file with above details.')
+            print('Please check the file with above details.')
             return None
