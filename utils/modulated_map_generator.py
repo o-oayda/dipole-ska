@@ -7,9 +7,7 @@ from utils.map_read import MapLoader
 
 class ModulatedMapGenerator:
     def __init__(self,
-                density_map: NDArray[np.int_], 
-                briggs_weighting: Literal[-1, 0, 1],
-                configuration: Literal['AA', 'AA4'],
+                density_map: NDArray[np.int_],
                 dipole_amplitude: float,
                 dipole_longitude: float,
                 dipole_latitude: float,
@@ -18,15 +16,11 @@ class ModulatedMapGenerator:
         Class for injecting dipole modulation into SKA maps.
 
         :param density_map: Healpy density map onto which modulations are done.
-        :param briggs_weighting: Briggs weighting used to generate the map.
-        :param configuration: SKA telescope configuration used to generate the map.
         :param dipole_amplitude: Amplitude of the dipole.
         :param dipole_longitude: Longitude of the dipole. Input in degrees.
         :param dipole_latitude: Latitude of the dipole. Input in degrees.
         '''
         self.density_map = density_map
-        self.briggs_weighting = briggs_weighting
-        self.configuration = configuration
         self.dipole_amplitude = dipole_amplitude
         self.dipole_longitude = dipole_longitude
         self.dipole_latitude = dipole_latitude
