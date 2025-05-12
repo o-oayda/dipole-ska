@@ -15,7 +15,7 @@ class MapLoader:
         :param configuration: SKA telescope configuration used to generate the map.
         '''
         if briggs_weighting == -1:
-            self.briggs_weighting == 'n1'
+            self.briggs_weighting = 'n1'
         else:
             self.briggs_weighting = str(briggs_weighting)
         
@@ -23,7 +23,7 @@ class MapLoader:
 
     def load(self,
             map_number: int
-    ) -> NDArray[np.int_]:
+    ) -> NDArray[np.int_] | None:
         '''
         Load and return SKA fits density map based on congigured settings
         and specified map number.
@@ -39,12 +39,15 @@ class MapLoader:
         self.file_name = f'map_{self.map_number}.fits'
         try:
             self.density_map = hp.read_map(
-            f'{self.file_path}/{self.file_name}',
-            nest=False
+                f'{self.file_path}/{self.file_name}',
+                nest=False
             )
             return self.density_map
         except OSError:
-            print(' Corrupted file. File details are as follows: \n Briggs weighting: '
-                f'{self.briggs_weighting} \n Configuration: {self.configuration} \n '
-                f'Map number: {self.map_number}')
+            print(
+                'Corrupted file. File details are as follows:',
+                f'\nBriggs weighting: {self.briggs_weighting}',
+                f'\nConfiguration: {self.configuration}',
+                f'\nMap number: {self.map_number}'
+            )
             return None

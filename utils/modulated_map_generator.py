@@ -46,7 +46,7 @@ class ModulatedMapGenerator:
     def modulated_map(self,
                       l_max_input: int | None = None,
                       scaling_factor: float = 100,
-                      ) -> NDArray[np.float_]:
+                      ) -> NDArray[np.float_] | None:
         '''
         Generate a dipole modulated sky from an SKA map.
         
