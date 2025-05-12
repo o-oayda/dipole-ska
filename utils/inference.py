@@ -1,18 +1,45 @@
 import logging
 import ultranest
 import sys
+from abc import abstractmethod
+from numpy.typing import NDArray
+import ultranest.stepsampler
+import numpy as np
 
-class Inference:
+class InferenceMixin:
     '''
-    Provides methods for running Nested Sampling alghorithms.
-    Inherited by each model.
+    Provides methods for running Nested Sampling algorithms.
+    Inherited by each model, which need to certain properties and methods.
     '''
     def __init__(self):
         self._disable_ultranest_logging()
 
+    @property
+    @abstractmethod
+    def parameter_names(self) -> list[str]:
+        raise NotImplementedError(
+            'Subclass models must define parameter names property.'
+        )
+
+    @abstractmethod
+    def log_likelihood(self,
+            Theta: NDArray[np.float64]
+    ) -> NDArray[np.float64]:
+        raise NotImplementedError(
+            'Subclass models must define log_likelihood method.'
+        )
+
+    @abstractmethod
+    def prior_transform(self,
+            uniform_deviates: NDArray[np.float64]
+    ) -> NDArray[np.float64]:
+        raise NotImplementedError(
+            'Subclass models must define prior_transform method.'
+        )
+
     def run_nested_sampling(self,
             step: bool = False,
-            n_steps: int = None,
+            n_steps: int | None = None,
             reactive_sampler_kwargs: dict = {},
             run_kwargs: dict = {}
         ) -> None:
@@ -53,14 +80,17 @@ class Inference:
         except ValueError as e:
             print(e)
         
-        self.samples = self.results['samples']
-        self.log_bayesian_evidence = self.results['logz']
+        if self.results is not None:
+            self.samples = self.results['samples']
+            self.log_bayesian_evidence = self.results['logz']
+        else:
+            raise Exception('Ultranest results are undefined.')
 
     def _switch_to_step_sampling(self, n_steps: int | None = None) -> None:
         if n_steps is None:
-            n_steps = 2 * len(self.param_names)
-
-        self.ultranest_sampler.stepsampler = ultranest.stepsampler.SliceSampler(
+            n_steps = 2 * len(self.parameter_names)
+        
+        self.ultranest_sampler.stepsampler = ultranest.stepsampler.SliceSampler( # type: ignore
             nsteps=n_steps,
             generate_direction=(
                 ultranest.stepsampler.generate_mixture_random_direction

@@ -11,36 +11,32 @@ import matplotlib.pyplot as plt
 
 class Prior:
     def __init__(self,
-            prior_summary: Dict[str, list[str | int]] | None = None,
-            choose_default: str | None = None
+            choose_prior: Dict[str, list[str | int]] | str,
     ):
         '''
         Class for constructing n-dimensional prior distribution functions.
         This class can be passed to a model to specify its sampling distribution.
         The transform functions are stored in the `prior_transforms` attribute.
         
-        :param prior_summary: Dictionary specifying the priors for each of
-            a model's parameters. For example, for a single-parameter model with
-            parameter `theta` drawn from a uniform distribution between 0 and 20,
-            specify `prior_summary: {'theta': ['Uniform', 0, 20]}`.
-        :param choose_default: Instead of specifying the priors explicitly,
-            use default priors for typical models, like a pure dipole.
-            These defaults are housed in `models/default_priors.py`.
+        :param choose_prior: Can specify either (1) a dictionary of priors for
+            each of a model's parameters or (2) a default prior.
+            
+            - (1) For example, for a single-parameter model with parameter
+                `theta` drawn from a uniform distribution between 0 and 20,
+                specify `prior_summary: {'theta': ['Uniform', 0, 20]}`.
+            - (2) Instead of specifying the priors explicitly, use default
+                priors for typical models, like a pure dipole. These defaults
+                are housed in `models/default_priors.py`.
+        
         :raises: AssertionError if both prior_summary and choose_default
             are None.
         '''
-        self.prior_dict = prior_summary
-        self.choose_default = choose_default
-        
-        assert (
-            (self.prior_dict is not None)
-            or
-            (self.choose_default is not None)
-        ), "Both prior_summary and choose_default cannot be None."
-
-        if self.prior_dict is not None:
+        if type(choose_prior) is dict:
+            self.prior_dict = choose_prior
             self._construct_priors()
-        else:
+        
+        elif type(choose_prior) is str:
+            self.choose_default = choose_prior
             self._load_default_priors()
             self._construct_priors()
     
@@ -65,7 +61,7 @@ class Prior:
     
     def change_prior(self,
             prior_index: int,
-            new_prior: list[str | int]
+            new_prior: list[str | (float | np.float_)] 
         ) -> None:
         '''
         Change the sampling distribution for one of the parameters.
@@ -76,6 +72,16 @@ class Prior:
         :param new_prior: Specify the new sampling distribution. See the
         `__init__` docstring for how to format this distribution.
         '''
+        assert (
+            type(new_prior[0]) is str
+        ), 'The new prior list must start with a distribution string.'
+
+        assert (
+            isinstance(new_prior[1], (float, np.floating))
+            and
+            isinstance(new_prior[2], (float, np.floating))
+        ), 'The second and third elements of the new prior list must be floats.'
+
         new_distribution = self._get_prior_callable(new_prior[0])
         new_minimum = new_prior[1]
         new_maximum = new_prior[2]
@@ -152,12 +158,22 @@ class Prior:
         '''
         self.parameter_names = list(self.prior_dict.keys())
         self.ndim = len(self.parameter_names)
-
         self.prior_transforms = []
+        
         for value in self.prior_dict.values():
+            
             distribution = value[0]
+            assert type(distribution) is str, (
+                f'Distribution ({distribution}) needs to be a string.'
+            )
+            
             minimum = value[1]
             maximum = value[2]
+            assert type(minimum) is float and type(maximum) is float, (
+                f'Bounds on priors ',
+                f'(type min: {type(minimum)}, type max: {type(maximum)})'
+                'must be floats.'
+            )
 
             callable_prior_function = self._get_prior_callable(distribution)
             constructed_callable = self._construct_callable(
@@ -191,8 +207,8 @@ class Prior:
     
     def _construct_callable(self,
             callable_prior_function: Callable,
-            minimum: float,
-            maximum: float
+            minimum: float | np.float_,
+            maximum: float | np.float_
     ) -> Callable:
         '''
         Make wrapper function to be used when calling this class's `transform`

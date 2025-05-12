@@ -1,16 +1,19 @@
 from numpy.typing import NDArray
 import numpy as np
 from scipy.stats import poisson
-from utils.inference import Inference
+from utils.inference import InferenceMixin
 from typing import Literal
 from models.priors import Prior
 import healpy as hp
 from utils.math import compute_dipole_signal
 from utils.posterior import Posterior
+from abc import abstractmethod
 
-class Likelihood:
-    def __init__(self):
-        pass
+class LikelihoodMixin:
+    @property
+    @abstractmethod
+    def prior(self) -> Prior:
+        raise NotImplementedError('Subclass models must implement a prior property.')
 
     def point_by_point_log_likelihood(self,
             dipole_signal: NDArray[np.float64],
@@ -69,9 +72,11 @@ class Likelihood:
         '''
         return self.prior.transform(uniform_deviates)
 
-class MapModel:
-    def __init__(self):
-        pass
+class MapModelMixin:
+    @property
+    @abstractmethod
+    def density_map(self) -> NDArray[np.int_]:
+        raise NotImplementedError('Subclass models must define a density map.')
 
     def _get_healpy_map_attributes(self) -> None:
         '''
@@ -96,9 +101,9 @@ class MapModel:
         the explicit one the user has provided.
         '''
         if prior is None:
-            self.prior = Prior(choose_default=default_prior)
+            self._prior = Prior(choose_prior=default_prior)
         else:
-            self.prior = prior
+            self._prior = prior
     
     def _parse_likelihood_choice(self,
             likelihood: Literal['point', 'poisson']
@@ -117,9 +122,9 @@ class MapModel:
         self.likelihood = likelihood
 
         if self.likelihood == 'point':
-            self.prior.remove_prior(prior_index=0)
+            self._prior.remove_prior(prior_index=0)
         elif self.likelihood == 'poisson':
-            self.prior.change_prior(
+            self._prior.change_prior(
                 prior_index=0,
                 new_prior=[
                     'Uniform',
@@ -132,7 +137,7 @@ class MapModel:
                 f'Likelihood choice ({self.likelihood}) not recognised.'
             )
 
-class Dipole(Likelihood, Inference, MapModel, Posterior):
+class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, Posterior):
     def __init__(self,
             density_map: NDArray[np.int_],
             prior: Prior | None = None,
@@ -168,12 +173,24 @@ class Dipole(Likelihood, Inference, MapModel, Posterior):
             As mentioned above, this choice will dynamically change the model
             dimensionality and the prior distributions.
         '''
-        self.density_map = density_map
+        self._density_map = density_map
         self._get_healpy_map_attributes()
         self._parse_prior_choice(default_prior='dipole', prior=prior)
         self._parse_likelihood_choice(likelihood)
-        self.parameter_names = self.prior.parameter_names
+        self._parameter_names = self.prior.parameter_names
         self.ndim = self.prior.ndim
+
+    @property
+    def density_map(self) -> NDArray[np.int_]:
+        return self._density_map
+
+    @property
+    def prior(self) -> Prior:
+        return self._prior
+    
+    @property
+    def parameter_names(self) -> list[str]:
+        return self._parameter_names
 
     def log_likelihood(self,
             Theta: NDArray[np.float64]
