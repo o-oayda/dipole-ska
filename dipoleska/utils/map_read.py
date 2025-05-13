@@ -23,7 +23,7 @@ class MapLoader:
 
     def load(self,
             map_number: int
-    ) -> NDArray[np.int_] | None:
+    ) -> NDArray[np.int_]:
         '''
         Load and return SKA fits density map based on congigured settings
         and specified map number.
@@ -43,11 +43,11 @@ class MapLoader:
                 nest=False
             )
             return self.density_map
-        except OSError:
-            print(
-                'Corrupted file. File details are as follows:',
-                f'\nBriggs weighting: {self.briggs_weighting}',
-                f'\nConfiguration: {self.configuration}',
-                f'\nMap number: {self.map_number}'
-            )
-            return None
+        except FileNotFoundError as e:
+            raise Exception(f'''
+Cannot find file. File details are as follows:
+Briggs weighting: {self.briggs_weighting}
+Configuration: {self.configuration}
+Map number: {self.map_number}
+Path: {self.file_path}/{self.file_name}'''
+            ) from e
