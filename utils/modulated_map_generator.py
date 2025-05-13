@@ -3,14 +3,14 @@ import healpy as hp
 from numpy.typing import NDArray
 import numpy as np
 from utils.map_read import MapLoader
-
+import healpy as hp
 
 class ModulatedMapGenerator:
     def __init__(self,
-                density_map: NDArray[np.int_],
-                dipole_amplitude: float,
-                dipole_longitude: float,
-                dipole_latitude: float,
+            density_map: NDArray[np.int_],
+            dipole_amplitude: float,
+            dipole_longitude: float,
+            dipole_latitude: float,
     ):
         '''
         Class for injecting dipole modulation into SKA maps.
@@ -25,9 +25,7 @@ class ModulatedMapGenerator:
         self.dipole_longitude = dipole_longitude
         self.dipole_latitude = dipole_latitude
 
-    def dipole_map(self,
-                   nside: int,
-                   ) -> NDArray[np.complex_]:
+    def dipole_map(self, nside: int) -> NDArray[np.complex_]:
         '''
         Calcuate the dipolar modulation map for an NSIDE, and the dipole parameters.
         
@@ -44,9 +42,9 @@ class ModulatedMapGenerator:
     
     
     def modulated_map(self,
-                      l_max_input: int | None = None,
-                      scaling_factor: float = 100,
-                      ) -> NDArray[np.float_] | None:
+            l_max_input: int | None = None,
+            scaling_factor: float = 100,
+    ) -> NDArray[np.int_] | None:
         '''
         Generate a dipole modulated sky from an SKA map.
         
@@ -64,12 +62,24 @@ class ModulatedMapGenerator:
                 l_max = 3 * nside - 1
             else:
                 l_max = l_max_input
-            alm = hp.map2alm(self.density_map, lmax=l_max)
-            scaled_alm = scaling_factor * alm
-            reconstructed_map = hp.alm2map(scaled_alm, lmax=l_max , nside=nside)
-            dipole_modulation = self.dipole_map(nside)
-            modulated_map = reconstructed_map * dipole_modulation
-            final_map = np.random.poisson(modulated_map/scaling_factor)
+
+            # TODO: understand what is happening below with respect to
+            # negatives in the power map and needing to downgrade the
+            # dipole-modulated map
+            self.alm = hp.map2alm(self.density_map)
+            self.scaled_alm = scaling_factor * self.alm
+            self.reconstructed_map = hp.alm2map(self.scaled_alm, nside=nside)
+            self.dipole_modulation = self.dipole_map(nside)
+            modulated_map = self.reconstructed_map * self.dipole_modulation
+            modulated_map_dscaled = hp.ud_grade(
+                modulated_map,
+                nside_out=64,
+                power=-2
+            )   
+            self.lambdas = modulated_map_dscaled / scaling_factor
+            final_map = np.random.poisson(
+                modulated_map_dscaled / scaling_factor
+            )
             return final_map
         else:
             print('Please check the file with above details.')
