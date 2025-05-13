@@ -48,3 +48,6 @@ model.prior.plot_priors()
 model.run_nested_sampling()
 model.corner_plot()
 ```
+
+## Examples
+See `dipoleska/examples/` for scripts showcasing how to use this repo.
