@@ -3,6 +3,7 @@ from numpy.typing import NDArray
 from corner import corner
 import matplotlib.pyplot as plt
 import os
+from utils.physics import change_source_coordinates
 
 class Posterior:
     def __init__(self,
@@ -37,9 +38,60 @@ class Posterior:
                 dtype=str
             )
 
-    def corner_plot(self, **corner_kwargs):
+    def _convert_samples(self, coordinates: list[str]) -> NDArray[np.float64]:
+        '''
+        Change coordinates of samples depending on user input. Only dipole
+        conversions are supported at this stage.
+
+        :param coordinates: See docstring of user-facing `corner_plot`.
+        '''
+        samples_for_corner = self.samples.copy()
+
+        dipole_longitude_rad = self.samples[:, -2]
+        dipole_colatitude_rad = self.samples[:, -1]
+
+        dipole_longitude_deg = np.rad2deg(dipole_longitude_rad)
+        dipole_latitude_deg =  np.rad2deg(np.pi / 2 - dipole_colatitude_rad)
+
+        if len(coordinates) == 1:
+            samples_for_corner[:, -2] = dipole_longitude_deg
+            samples_for_corner[:, -1] = dipole_latitude_deg
+            return samples_for_corner
+        else:
+            transformed_longitude, transformed_latitude = change_source_coordinates(
+                dipole_longitude_deg,
+                dipole_latitude_deg,
+                native_coordinates=coordinates[0],
+                target_coordinates=coordinates[1]
+            )
+            samples_for_corner[:, -2] = transformed_longitude
+            samples_for_corner[:, -1] = transformed_latitude
+            return samples_for_corner
+
+    def corner_plot(self,
+            coordinates: list[str] | None = None,
+            **corner_kwargs
+        ) -> None:
+        '''
+        Make corner plot for NS run.
+
+        :param coordinates: Specify a list of coordinates to transform the angle
+            indices of the corner plot. If the list has two elements, the first
+            coordinate is assumed to be the native coordinares and the last
+            the target coordinates. For example, specifying
+            `coordinates=['equatorial', 'galactic']` transforms from equatorial
+            to galactic. Specifying `coordinates=['equatorial']` would leave
+            the corner in its native coordinates, but since sampling is done
+            internally in spherical coordinates, it would also involve a
+            conversion to longitude and latitude in degrees.
+        '''
+        if coordinates is not None:
+            samples_for_corner = self._convert_samples(coordinates)
+        else:
+            samples_for_corner = self.samples
+        
         corner(
-            self.samples,
+            samples_for_corner,
             **{
                 'labels': self.parameter_names,
                 'bins': 50,
