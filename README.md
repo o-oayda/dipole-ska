@@ -24,9 +24,9 @@ To quckly get set up and running, as well as to see how this library works,
 follow the example below. This will load an SKA map and fit a dipole to it.
 
 ```python
-from utils.map_read import MapLoader
-from utils.plotting import MapPlotter
-from models.dipole import Dipole
+from dipoleska.utils.map_read import MapLoader
+from dipoleska.utils.plotting import MapPlotter
+from dipoleska.models.dipole import Dipole
 import healpy as hp
 
 # load in map_1 with briggs=1 and 'AA' configuration
