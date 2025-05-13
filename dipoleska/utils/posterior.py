@@ -3,7 +3,7 @@ from numpy.typing import NDArray
 from corner import corner
 import matplotlib.pyplot as plt
 import os
-from utils.physics import change_source_coordinates
+from dipoleska.utils.physics import change_source_coordinates
 
 class Posterior:
     def __init__(self,

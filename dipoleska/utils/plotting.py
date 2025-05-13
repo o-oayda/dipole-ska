@@ -3,7 +3,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 import numpy as np
 import healpy as hp
-from utils.physics import omega_to_theta
+from dipoleska.utils.physics import omega_to_theta
 from matplotlib.colors import ListedColormap
 import matplotlib.pyplot as plt
 

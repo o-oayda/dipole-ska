@@ -1,9 +1,9 @@
 # %%
-from utils.modulated_map_generator import ModulatedMapGenerator
-from utils.map_read import MapLoader
+from dipoleska.utils.modulated_map_generator import ModulatedMapGenerator
+from dipoleska.utils.map_read import MapLoader
 import healpy as hp
-from utils.plotting import MapPlotter
-from models.dipole import Dipole
+from dipoleska.utils.plotting import MapPlotter
+from dipoleska.models.dipole import Dipole
 # %%
 density_map = MapLoader(1, 'AA').load(1)
 density_map_dscaled = hp.ud_grade(

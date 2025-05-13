@@ -5,10 +5,12 @@ We are implementing this on `python 3.12`.
 To get set up and working:
 1. Clone this repo
 2. `cd` into it
-3. Make a python virtual environment: `python -m venv .venv`
-4. Install the requirements: `pip install -r requirements.txt`
+3. Make a python virtual environment: `python -m venv .venv`.
+4. Activate the virtual environment: `source .venv/bin/activate`
+5. Install the package using `pip install -e .` The `-e` flag ensures changes made to the source code will be applied on subsequent imports.
 
-We are using `matplotlib==3.7.5` to avoid the plotting issue where the contours wrap around the coordinates.
+> [!NOTE]
+> We are using `matplotlib==3.7.5` to avoid the plotting issue where the contours wrap around the coordinates.
 
 ## Adding the Data
 Place the SKA maps in their corresponding folder in `data/ska/`.

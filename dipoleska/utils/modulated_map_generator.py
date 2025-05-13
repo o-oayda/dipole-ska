@@ -2,7 +2,7 @@ from typing import Literal
 import healpy as hp
 from numpy.typing import NDArray
 import numpy as np
-from utils.map_read import MapLoader
+from dipoleska.utils.map_read import MapLoader
 import healpy as hp
 
 class ModulatedMapGenerator:

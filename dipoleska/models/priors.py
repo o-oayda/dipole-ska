@@ -1,6 +1,6 @@
-from models.default_priors import prior_defaults
+from dipoleska.models.default_priors import prior_defaults
 from typing import Callable
-from utils.math import (
+from dipoleska.utils.math import (
     uniform_to_uniform_transform,
     uniform_to_polar_transform
 )

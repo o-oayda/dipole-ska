@@ -1,12 +1,12 @@
 from numpy.typing import NDArray
 import numpy as np
 from scipy.stats import poisson
-from utils.inference import InferenceMixin
+from dipoleska.utils.inference import InferenceMixin
 from typing import Literal
-from models.priors import Prior
+from dipoleska.models.priors import Prior
 import healpy as hp
-from utils.math import compute_dipole_signal
-from utils.posterior import Posterior
+from dipoleska.utils.math import compute_dipole_signal
+from dipoleska.utils.posterior import Posterior
 from abc import abstractmethod
 
 class LikelihoodMixin:
