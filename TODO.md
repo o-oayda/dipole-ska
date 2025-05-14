@@ -4,9 +4,9 @@
     - [x] **Geraint** will ask Sebastian about the ell truncation
 - [ ] Go through each map and see how (in)consistent they are with the input map
     - **Mali** to make pipeline (multiprocessing)
-- [ ] Implement sky plot
+- [x] Implement sky plot
     - **Oliver**
-- [ ] Go through modulated_map function and comment
+- [x] Go through modulated_map function and comment
     - **Oliver**
 - [ ] Summary statistics for outputs
     - **Mali** to do

@@ -14,6 +14,24 @@ def omega_to_theta(omega):
     '''
     return np.arccos(1 - omega / (2 * np.pi))
 
+def spherical_to_degrees(
+        longitude_rad: NDArray[np.float64],
+        colatitude_rad: NDArray[np.float64]
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    '''
+    Convert spherical coordinates (phi ~ [0, 2pi], theta ~ [0, pi] starting from
+    the north pole) to the same system but in degrees, with phi' ~ [0, 360] and
+    theta' ~ [-90, 90]. In this new system, theta is 0 at the equator, 90 at the
+    north pole and -90 at the south pole.
+
+    :param longitude_rad: Longitude between 0 and 2pi.
+    :param colatitude_rad: Colatitude between 0 and pi.
+    :return: Tuple (phi', theta') of transformed coordinates.
+    '''
+    longitude_deg = np.rad2deg(longitude_rad)
+    latitude_deg = np.rad2deg(np.pi / 2 - colatitude_rad)
+    return longitude_deg, latitude_deg
+
 def change_source_coordinates(
         source_longitude_deg: NDArray[np.float64],
         source_latitude_deg: NDArray[np.float64],

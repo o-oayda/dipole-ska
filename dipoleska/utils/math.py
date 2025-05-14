@@ -64,3 +64,13 @@ def compute_dipole_signal(
         )
         dipole_signal = np.einsum('ki,ji->jk', dipole_vector, pixel_vectors)
         return dipole_signal
+
+def sigma_to_prob2D(sigma: list[float]) -> NDArray[np.float64]:
+    '''
+    Convert sigma significance to mass enclosed inside a 2D normal
+    distribution using the explicit formula for a 2D normal.
+    
+    :param sigma: The levels of significance, e.g. `sigma = [1., 2.]`.
+    :returns: The probability enclosed within each significance level.
+    '''
+    return 1.0 - np.exp(-0.5 * np.asarray(sigma)**2)
