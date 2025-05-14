@@ -14,36 +14,39 @@ from dipoleska.utils.math import sigma_to_prob2D
 
 class Posterior:
     def __init__(self,
-            equal_weighted_samples: NDArray[np.float64] | None = None,
-            run_number: int | None = None
+            equal_weighted_samples: NDArray[np.float64] | int
     ) -> None:
-        assert not (
-            (equal_weighted_samples is None)
-            and
-            (run_number is None)
-        ), 'Specify either equal weighted samples or a run path, not both.'
+        '''
+        :param equal_weighted_samples: Can specify either an array of samples,
+            or an integer referring to a run number in ultranest_logs/, in which
+            case the samples from the run are automatically loaded.
+        '''
+        if type(equal_weighted_samples) is int:
+            run_number = equal_weighted_samples
+            self._load_samples_from_log(run_number)
         
-        self._load_samples_from_log(run_number)
+        elif type(equal_weighted_samples) is np.ndarray:
+            self.samples = equal_weighted_samples
+        
+        else:
+            raise Exception('Pass either array of samples or an integer (run number).')
 
     def _load_samples_from_log(self,
-            run_number: int | None = None
+            run_number: int
     ) -> None:
-        if run_number is None:
-            pass
-        else:
-            self.load_path = (
-                f'ultranest_logs/run{run_number}/chains/equal_weighted_post.txt'
-            )
-            assert os.path.exists(
-                self.load_path
-            ), f'Cannot find path ({self.load_path}).'
-            
-            self.samples = np.loadtxt(self.load_path, skiprows=1)
-            self.parameter_names = np.loadtxt(
-                self.load_path,
-                max_rows=1,
-                dtype=str
-            )
+        self.load_path = (
+            f'ultranest_logs/run{run_number}/chains/equal_weighted_post.txt'
+        )
+        assert os.path.exists(
+            self.load_path
+        ), f'Cannot find path ({self.load_path}).'
+        
+        self.samples = np.loadtxt(self.load_path, skiprows=1)
+        self.parameter_names = np.loadtxt(
+            self.load_path,
+            max_rows=1,
+            dtype=str
+        )
 
     def _convert_samples(self,
             coordinates: list[str] | None
