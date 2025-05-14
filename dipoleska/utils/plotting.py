@@ -6,6 +6,7 @@ import healpy as hp
 from dipoleska.utils.physics import omega_to_theta
 from matplotlib.colors import ListedColormap
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 class MapPlotter:
     def __init__(self, density_map: NDArray[np.int_]) -> None:
@@ -132,7 +133,7 @@ class MapPlotter:
         
         # FIXME: this is fast for nside=64 maps but slow for nside=512
         # this needs to be sped up somehow
-        for pixel_index in included_pixels:
+        for pixel_index in tqdm(included_pixels):
             pixel_vector = hp.pix2vec(nside, pixel_index)
             disc = hp.query_disc(nside, pixel_vector, smoothing_radius)
             smoothed_map[pixel_index] = np.nanmean(density_map[disc] * weights[disc])
