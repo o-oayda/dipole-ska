@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 class Prior:
     def __init__(self,
-            choose_prior: Dict[str, list[str | int]] | str,
+            choose_prior: Dict[str, list[str | float | np.floating]] | str,
     ):
         '''
         Class for constructing n-dimensional prior distribution functions.
@@ -169,12 +169,16 @@ class Prior:
             
             minimum = value[1]
             maximum = value[2]
-            assert type(minimum) is float and type(maximum) is float, (
+            assert (
+                isinstance(minimum, (float, np.floating))
+                and
+                isinstance(maximum, (float, np.floating))
+            ), (
                 f'Bounds on priors ',
                 f'(type min: {type(minimum)}, type max: {type(maximum)})'
                 'must be floats.'
             )
-
+            
             callable_prior_function = self._get_prior_callable(distribution)
             constructed_callable = self._construct_callable(
                 callable_prior_function,
