@@ -11,6 +11,8 @@ from dipoleska.utils.physics import (
 import healpy as hp
 from scipy.interpolate import interp1d
 from dipoleska.utils.math import sigma_to_prob2D
+from typing import Self
+from matplotlib.lines import Line2D
 
 class Posterior:
     def __init__(self,
@@ -119,6 +121,63 @@ class Posterior:
                 **corner_kwargs
             }
         )
+        plt.show()
+
+    def corner_plot_double(self,
+            second_model: Self,
+            coordinates: list[str] | None = None,
+            colors: list[str] = ['cornflowerblue', 'tomato'],
+            labels: list[str] = ['Model 0', 'Model 1'],
+            **corner_kwargs
+        ) -> None:
+        '''
+        Make corner plot for NS run, with an additional NS overplotted.
+
+        :param coordinates: Specify a list of coordinates to transform the angle
+            indices of the corner plot. If the list has two elements, the first
+            coordinate is assumed to be the native coordinares and the last
+            the target coordinates. For example, specifying
+            `coordinates=['equatorial', 'galactic']` transforms from equatorial
+            to galactic. Specifying `coordinates=['equatorial']` would leave
+            the corner in its native coordinates, but since sampling is done
+            internally in spherical coordinates, it would also involve a
+            conversion to longitude and latitude in degrees.
+        :param second_model: The second model to be over-plotted in the corner
+            plot.
+        :param colors: Specify the colour of each model as an array, default is
+            ['cornflowerblue', 'tomato'], where the first model is
+            'cornflowerblue'.
+        :param labels: Specify the model labels, default is ['Model 0', 'Model 1'].
+        '''
+        fig = plt.figure(figsize=(10, 10))
+        handles = []
+        for model, color, label in zip([self, second_model], colors, labels):
+            if coordinates is not None:
+                samples_for_corner = model._convert_samples(coordinates)
+            else:
+                samples_for_corner = model.samples
+            
+            axes = corner(
+                samples_for_corner,
+                **{
+                    'labels': model.parameter_names,
+                    'bins': 50,
+                    'show_titles': False,
+                    'quantiles': (0.025,0.5,0.975),
+                    'smooth': 1,
+                    'smooth1d': 1,
+                    'fig': fig,
+                    'color': color,
+
+                    **corner_kwargs
+                }
+            )
+            # Create a legend handle
+            handles.append(Line2D([], [], color=color, label=label))
+
+        # Draw the legend
+        axes[0, 0].legend(handles=handles, loc="upper right")
+
         plt.show()
 
     def posterior_predictive_check(self):
