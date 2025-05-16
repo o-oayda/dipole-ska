@@ -177,6 +177,10 @@ cython_debug/
 *.fits
 ultranest_logs/*
 
+# output
+*.pdf
+*.png
+
 # Mac OS
 .DS_Store
 

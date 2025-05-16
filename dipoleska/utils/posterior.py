@@ -87,6 +87,7 @@ class Posterior:
 
     def corner_plot(self,
             coordinates: list[str] | None = None,
+            save_path: str | None = None,
             **corner_kwargs
         ) -> None:
         '''
@@ -101,6 +102,8 @@ class Posterior:
             the corner in its native coordinates, but since sampling is done
             internally in spherical coordinates, it would also involve a
             conversion to longitude and latitude in degrees.
+        :param save_path: Specify a path to save the corner plot. If None, the
+            plot will not be saved. The default is None.
         '''
         if coordinates is not None:
             samples_for_corner = self._convert_samples(coordinates)
@@ -121,11 +124,18 @@ class Posterior:
                 **corner_kwargs
             }
         )
+        if save_path is not None:
+            plt.savefig(
+                save_path,
+                bbox_inches='tight',
+                dpi=300
+            )
         plt.show()
 
     def corner_plot_double(self,
             second_model: Self,
             coordinates: list[str] | None = None,
+            save_path: str | None = None,
             colors: list[str] = ['cornflowerblue', 'tomato'],
             labels: list[str] = ['Model 0', 'Model 1'],
             **corner_kwargs
@@ -133,6 +143,8 @@ class Posterior:
         '''
         Make corner plot for NS run, with an additional NS overplotted.
 
+        :param second_model: The second model to be over-plotted in the corner
+            plot.
         :param coordinates: Specify a list of coordinates to transform the angle
             indices of the corner plot. If the list has two elements, the first
             coordinate is assumed to be the native coordinares and the last
@@ -142,22 +154,22 @@ class Posterior:
             the corner in its native coordinates, but since sampling is done
             internally in spherical coordinates, it would also involve a
             conversion to longitude and latitude in degrees.
-        :param second_model: The second model to be over-plotted in the corner
-            plot.
+        :param save_path: Specify a path to save the corner plot. If None, the
+            plot will not be saved. The default is None.
         :param colors: Specify the colour of each model as an array, default is
             ['cornflowerblue', 'tomato'], where the first model is
             'cornflowerblue'.
-        :param labels: Specify the model labels, default is ['Model 0', 'Model 1'].
+        :param labels: Specify the corresponding model labels, default is
+        ['Model 0', 'Model 1'], where the first model is 'Model 1'.
         '''
         fig = plt.figure(figsize=(10, 10))
-        handles = []
         for model, color, label in zip([self, second_model], colors, labels):
             if coordinates is not None:
                 samples_for_corner = model._convert_samples(coordinates)
             else:
                 samples_for_corner = model.samples
             
-            axes = corner(
+            corner(
                 samples_for_corner,
                 **{
                     'labels': model.parameter_names,
@@ -168,16 +180,17 @@ class Posterior:
                     'smooth1d': 1,
                     'fig': fig,
                     'color': color,
-
                     **corner_kwargs
                 }
             )
-            # Create a legend handle
-            handles.append(Line2D([], [], color=color, label=label))
-
-        # Draw the legend
-        axes[0, 0].legend(handles=handles, loc="upper right")
-
+            plt.scatter([],[], color=color, label=label)
+        plt.legend()
+        if save_path is not None:
+            plt.savefig(
+                save_path,
+                bbox_inches='tight',
+                dpi=300
+            )
         plt.show()
 
     def posterior_predictive_check(self):
