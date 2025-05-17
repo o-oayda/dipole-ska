@@ -7,13 +7,8 @@ from dipoleska.utils.map_process import MapResolutionChanger
 
 #%%
 density_map = MapLoader(1, 'AA').load(1)
-density_map_dscaled = hp.ud_grade(
-    density_map,
-    nside_out=64,
-    power=-2
-)
 
-plotter = MapPlotter(density_map_dscaled)
+plotter = MapPlotter(density_map)
 plotter.plot_density_map()
 plotter.plot_smooth_map()
 
