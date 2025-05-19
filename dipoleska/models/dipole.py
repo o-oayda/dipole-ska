@@ -6,7 +6,7 @@ from typing import Literal
 from dipoleska.models.priors import Prior
 import healpy as hp
 from dipoleska.utils.math import compute_dipole_signal
-from dipoleska.utils.posterior import Posterior
+from dipoleska.utils.posterior import PosteriorMixin
 from abc import abstractmethod
 
 class LikelihoodMixin:
@@ -137,7 +137,7 @@ class MapModelMixin:
                 f'Likelihood choice ({self.likelihood}) not recognised.'
             )
 
-class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, Posterior):
+class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
     def __init__(self,
             density_map: NDArray[np.int_],
             prior: Prior | None = None,
@@ -210,9 +210,8 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, Posterior):
                 density_map=self.density_map
             )
         else:
-            mean_density = Theta[:, 0]
             return self.poisson_log_likelihood(
-                rate_parameter=mean_density * dipole_term,
+                rate_parameter=dipole_term,
                 density_map=self.density_map
             )
 
@@ -236,4 +235,9 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, Posterior):
             dipole_colatitude=dipole_colatitude,
             pixel_vectors=self.pixel_vectors
         )
-        return 1 + dipole_signal
+
+        if self.likelihood == 'point':
+            return 1 + dipole_signal
+        else:
+            mean_count = Theta[:, 0]
+            return mean_count * (1 + dipole_signal)

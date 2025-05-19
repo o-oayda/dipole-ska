@@ -14,46 +14,24 @@ from dipoleska.utils.math import sigma_to_prob2D
 from typing import Self, Callable, Any
 from abc import abstractmethod
 
-class Posterior:
-    def __init__(self,
-            equal_weighted_samples: NDArray[np.float64] | int
-    ) -> None:
-        '''
-        :param equal_weighted_samples: Can specify either an array of samples,
-            or an integer referring to a run number in ultranest_logs/, in which
-            case the samples from the run are automatically loaded.
-        '''
-        if type(equal_weighted_samples) is int:
-            run_number = equal_weighted_samples
-            self._load_samples_from_log(run_number)
-        
-        elif type(equal_weighted_samples) is np.ndarray:
-            self.samples = equal_weighted_samples
-        
-        else:
-            raise Exception('Pass either array of samples or an integer (run number).')
+class PosteriorMixin:
+    '''
+    Mixin class for adding functionality to the Posterior class as well as
+    model classes like the Dipole class.
+    '''
+    @property
+    @abstractmethod
+    def samples(self) -> NDArray[np.float64]:
+        raise NotImplementedError('Subclasses must define equal-weighted samples.')
+    
+    @property
+    @abstractmethod
+    def parameter_names(self) -> list[str]:
+        raise NotImplementedError('Subclasses must define names for each parameter.')
 
     @abstractmethod
     def model(self, Theta: NDArray[np.float64]) -> Any:
-        raise NotImplementedError('Subclasses of Posterior must define a model method.')
-
-    def _load_samples_from_log(self,
-            run_number: int
-    ) -> None:
-        self.load_path = (
-            f'ultranest_logs/run{run_number}/chains/equal_weighted_post.txt'
-        )
-        assert os.path.exists(
-            self.load_path
-        ), f'Cannot find path ({self.load_path}).'
-        
-        self.samples = np.loadtxt(self.load_path, skiprows=1)
-        self.parameter_names = np.loadtxt(
-            self.load_path,
-            max_rows=1,
-            dtype=str
-        )
-        self.loaded_from_run = True
+        raise NotImplementedError('Subclasses must define a model method.')
 
     def _convert_samples(self,
             coordinates: list[str] | None
@@ -203,6 +181,17 @@ class Posterior:
             model_callable: Callable | None = None,
             **projview_kwargs
         ) -> None:
+        '''
+        Create a healpy posterior predictive map to heuristically verify the
+        posterior distribution reflects the actual the data.
+
+        :param n_samples: Number of posterior samples to draw.
+        :param model_callable: If Posterior has been instantiated using a run
+            number, the class will not know the model function transforming
+            parameters to a healpy a map. Pass this function here.
+        :param **projview_kwargs: Keyword arguments to pass to healpy's projview
+            function.
+        '''
         random_integers = np.random.randint(
             0,
             high=np.shape(self.samples)[0],
@@ -210,19 +199,23 @@ class Posterior:
         )
         random_samples = self.samples[random_integers, :]
         
-        if self.loaded_from_run:
+        try:
+            predictive_maps = self.model(random_samples)
+        
+        except NotImplementedError:
             assert model_callable is not None, '''Please pass a callable model
 function to this method when instantiating from an ultranest run number.'''
             predictive_maps = model_callable(random_samples)
-        else:
-            predictive_maps = self.model(random_samples)
+        
+        except Exception as e:
+            raise Exception(e)
 
         plt.figure(figsize=(4,9))  
         for i in range(n_samples):
             hp.projview(
                 predictive_maps[:, i],
-                sub=(n_samples, 1, i+1),
-                cbar=False,
+                sub=(n_samples, 1, i+1), # type: ignore
+                cbar=True,
                 override_plot_properties={
                     'figure_width': 3
                 },
@@ -423,3 +416,44 @@ function to this method when instantiating from an ultranest run number.'''
             )
         )
         return probability_contours
+
+class Posterior(PosteriorMixin):
+    def __init__(self,
+            equal_weighted_samples: NDArray[np.float64] | int
+    ) -> None:
+        '''
+        :param equal_weighted_samples: Can specify either an array of samples,
+            or an integer referring to a run number in ultranest_logs/, in which
+            case the samples from the run are automatically loaded.
+        '''
+        if type(equal_weighted_samples) is int:
+            run_number = equal_weighted_samples
+            self._load_samples_from_log(run_number)
+            self.loaded_from_run = True
+        
+        elif type(equal_weighted_samples) is np.ndarray:
+            self._samples = equal_weighted_samples
+            self.loaded_from_run = False
+        else:
+            raise Exception('Pass either array of samples or an integer (run number).')
+
+    @property
+    def samples(self) -> NDArray[np.float64]:
+        return self._samples
+
+    def _load_samples_from_log(self,
+            run_number: int
+    ) -> None:
+        self.load_path = (
+            f'ultranest_logs/run{run_number}/chains/equal_weighted_post.txt'
+        )
+        assert os.path.exists(
+            self.load_path
+        ), f'Cannot find path ({self.load_path}).'
+        
+        self._samples = np.loadtxt(self.load_path, skiprows=1)
+        self._parameter_names = np.loadtxt(
+            self.load_path,
+            max_rows=1,
+            dtype=str
+        )

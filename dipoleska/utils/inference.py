@@ -81,10 +81,14 @@ class InferenceMixin:
             print(e)
         
         if self.results is not None:
-            self.samples = self.results['samples']
+            self._samples = self.results['samples']
             self.log_bayesian_evidence = self.results['logz']
         else:
             raise Exception('Ultranest results are undefined.')
+
+    @property
+    def samples(self) -> NDArray[np.float64]:
+        return self._samples # type: ignore
 
     def _switch_to_step_sampling(self, n_steps: int | None = None) -> None:
         if n_steps is None:
