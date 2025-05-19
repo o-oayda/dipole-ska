@@ -11,8 +11,8 @@ from dipoleska.utils.physics import (
 import healpy as hp
 from scipy.interpolate import interp1d
 from dipoleska.utils.math import sigma_to_prob2D
-from typing import Self
-from matplotlib.lines import Line2D
+from typing import Self, Callable, Any
+from abc import abstractmethod
 
 class Posterior:
     def __init__(self,
@@ -33,6 +33,10 @@ class Posterior:
         else:
             raise Exception('Pass either array of samples or an integer (run number).')
 
+    @abstractmethod
+    def model(self, Theta: NDArray[np.float64]) -> Any:
+        raise NotImplementedError('Subclasses of Posterior must define a model method.')
+
     def _load_samples_from_log(self,
             run_number: int
     ) -> None:
@@ -49,6 +53,7 @@ class Posterior:
             max_rows=1,
             dtype=str
         )
+        self.loaded_from_run = True
 
     def _convert_samples(self,
             coordinates: list[str] | None
@@ -193,8 +198,37 @@ class Posterior:
             )
         plt.show()
 
-    def posterior_predictive_check(self):
-        pass
+    def posterior_predictive_check(self,
+            n_samples: int = 5,
+            model_callable: Callable | None = None,
+            **projview_kwargs
+        ) -> None:
+        random_integers = np.random.randint(
+            0,
+            high=np.shape(self.samples)[0],
+            size=n_samples
+        )
+        random_samples = self.samples[random_integers, :]
+        
+        if self.loaded_from_run:
+            assert model_callable is not None, '''Please pass a callable model
+function to this method when instantiating from an ultranest run number.'''
+            predictive_maps = model_callable(random_samples)
+        else:
+            predictive_maps = self.model(random_samples)
+
+        plt.figure(figsize=(4,9))  
+        for i in range(n_samples):
+            hp.projview(
+                predictive_maps[:, i],
+                sub=(n_samples, 1, i+1),
+                cbar=False,
+                override_plot_properties={
+                    'figure_width': 3
+                },
+                **projview_kwargs
+            )
+        plt.show()
 
     def sky_direction_posterior(self,
             coordinates: list[str] | None = None,
