@@ -77,7 +77,7 @@ if briggs_weighting == -1:
     briggs_weighting_str = 'n1'
 else:
     briggs_weighting_str = str(briggs_weighting)
-output_path = f'data/ska/briggs_{briggs_weighting_str}/{configuration}/'
+output_path = f'output/ska/briggs_{briggs_weighting_str}/{configuration}/'
 
 # %%
 ### Preparation
@@ -115,7 +115,7 @@ np.savetxt(output_path + f'map_{map_number}_bayes_factors.txt', np.array([densit
 density_map_model1.corner_plot_double(dipole_map_model1, coordinates=['equatorial','galactic'], labels=['Input Map', 'Modulated Map'], save_path=output_path + f'map_{map_number}_cornerplot.png')
 
 # Plot and save the free dipole posteriors for both the input and modulated maps (mollview)
-# TODO
-dipole_map_model0.sky_direction_posterior(instantiate_new_axes=True)
-dipole_map_model0.sky_direction_posterior(instantiate_new_axes=False)
-plt.show()
+dipole_map_model1.sky_direction_posterior(instantiate_new_axes=True, colour='tomato')
+density_map_model1.sky_direction_posterior(instantiate_new_axes=False, colour='cornflowerblue')
+plt.savefig(output_path + f'map_{map_number}_sky_direction_posterior.png', dpi=300, bbox_inches='tight')
+# %%
