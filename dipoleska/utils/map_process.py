@@ -3,7 +3,7 @@ import healpy as hp
 from numpy.typing import NDArray
 import numpy as np
 
-class MaskedMapGenerator:
+class MapProcessor:
     def __init__(self,
                  density_map: NDArray[np.int_]
                  ):
@@ -14,7 +14,7 @@ class MaskedMapGenerator:
         self.density_map = density_map
         self.nside = hp.npix2nside(len(self.density_map))
     
-    def masked_map(self,
+    def mask(self,
                    classification: list[Literal['north_equatorial',
                         'south_equatorial', 'galactic_plane']],
                 radius: list[float],
@@ -42,7 +42,7 @@ class MaskedMapGenerator:
         
         masked_pixels = []
         for iterator in range(len(classification)):
-            mask = self.mask_construction(classification[iterator],self.nside,
+            mask = self._mask_construction(classification[iterator],self.nside,
                                     radius[iterator],output_frame)
             masked_pixels.append(mask)
         masked_pixels = np.concatenate(masked_pixels)
@@ -53,7 +53,7 @@ class MaskedMapGenerator:
         self.template_map = template_map
         return masked_map
     
-    def mask_construction(self,
+    def _mask_construction(self,
                         classification: Literal['north_equatorial', 
                         'south_equatorial', 'galactic_plane'],
                         nside: int,
@@ -79,17 +79,17 @@ class MaskedMapGenerator:
         :return: Array of pixel indices within the limits of the mask.
         '''
         if classification=='north_equatorial':
-            lon,lat = self.coordinate_conversion(0,90,'C',output_frame)
-            pixel = self.queriedcap(lon,lat,radius,nside)
+            lon,lat = self._coordinate_conversion(0,90,'C',output_frame)
+            pixel = self._queried_cap(lon,lat,radius,nside)
         if classification=='south_equatorial':
-            lon,lat = self.coordinate_conversion(0,-90,'C',output_frame)
-            pixel = self.queriedcap(lon,lat,radius,nside)
+            lon,lat = self._coordinate_conversion(0,-90,'C',output_frame)
+            pixel = self._queried_cap(lon,lat,radius,nside)
             
         if classification=='galactic_plane':
-            lon_n,lat_n = self.coordinate_conversion(0,90,'G',output_frame)
-            pixels_n = self.queriedcap(lon_n,lat_n,90-radius,nside)
-            lon_s,lat_s = self.coordinate_conversion(0,-90,'G',output_frame)
-            pixels_s = self.queriedcap(lon_s,lat_s,90-radius,nside)
+            lon_n,lat_n = self._coordinate_conversion(0,90,'G',output_frame)
+            pixels_n = self._queried_cap(lon_n,lat_n,90-radius,nside)
+            lon_s,lat_s = self._coordinate_conversion(0,-90,'G',output_frame)
+            pixels_s = self._queried_cap(lon_s,lat_s,90-radius,nside)
             pixel_set = set([i for i in range(hp.nside2npix(nside))])-set(
                 np.concatenate((pixels_n,pixels_s)))
             pixel=np.array(list(pixel_set),dtype='int')
@@ -97,7 +97,7 @@ class MaskedMapGenerator:
         return np.array(list(pixel),dtype='int')
     
     @staticmethod
-    def coordinate_conversion(lon: float,
+    def _coordinate_conversion(lon: float,
                             lat: float,
                             input_frame: Literal['C', 'G', 'E'],
                             output_frame: Literal['C', 'G', 'E']
@@ -125,7 +125,7 @@ class MaskedMapGenerator:
         return rotated_lon, rotated_lat
     
     @staticmethod
-    def queriedcap(lon: float,
+    def _queried_cap(lon: float,
                     lat: float,
                 radius: float,
                 nside: int
@@ -143,23 +143,12 @@ class MaskedMapGenerator:
         vector = hp.ang2vec(lon,lat, lonlat=True)
         return np.array(list(hp.query_disc(nside, vector, 
                                         radius=np.deg2rad(radius),)))
-        
-class MapResolutionChanger:
-    def __init__(self, 
-                 density_map: NDArray[np.int_]
-                 ):
-        self.density_map = density_map
-        '''
-        Class for changing the resolution of a Healpy map.
-        
-        :param density_map: The Healpy map to be modified.
-        '''
 
     def change_map_resolution(self,
                               nside_out: int,
                               scaling_power: float = -2,
                               **ud_grade_kwargs
-                              ) -> NDArray[np.float_]:
+                              ) -> NDArray[np.float64 | np.int_]:
         '''
         Change the resolution of the map using the specified method.
         
