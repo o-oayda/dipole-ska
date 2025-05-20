@@ -9,6 +9,7 @@ import numpy as np
 import scipy as sp
 from astropy.coordinates import Galactic, FK5
 from astropy import units as u
+import matplotlib.pyplot as plt
 
 # %%
 ### Specify parameters
@@ -112,5 +113,9 @@ dipole_map_bayes_factor_10 = dipole_map_model1.log_bayesian_evidence - dipole_ma
 np.savetxt(output_path + f'map_{map_number}_bayes_factors.txt', np.array([density_map_bayes_factor_10, dipole_map_bayes_factor_10]))
 # Plot and save the free dipole posteriors for both the input and modulated maps (cornerplot)
 density_map_model1.corner_plot_double(dipole_map_model1, coordinates=['equatorial','galactic'], labels=['Input Map', 'Modulated Map'], save_path=output_path + f'map_{map_number}_cornerplot.png')
+
 # Plot and save the free dipole posteriors for both the input and modulated maps (mollview)
 # TODO
+dipole_map_model0.sky_direction_posterior(instantiate_new_axes=True)
+dipole_map_model0.sky_direction_posterior(instantiate_new_axes=False)
+plt.show()

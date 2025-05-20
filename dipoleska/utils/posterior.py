@@ -231,6 +231,7 @@ function to this method when instantiating from an ultranest run number.'''
             xsize: int = 500,
             nside: int = 256,
             rasterize_probability_mesh: bool = False,
+            instantiate_new_axes: bool = True
         ) -> None:
         '''
         :param colour: Specify the matplotlib colour for the sky direction.
@@ -245,6 +246,10 @@ function to this method when instantiating from an ultranest run number.'''
         :param rasterize_probability_mesh: Specify whether or not to rasterize
             the pcolormesh representing probability, which tends to greatly
             increase the file size if not rasterized for high xsize.
+        :param instantiate_new_axes: Choose whether or not to instantiate a
+            blank set of Mollweide axes. If, for example, plotting multiple sky
+            directions on the same axis, set this to True for the first
+            call of sky_direction_posterior then False for subsequent calls.
         '''
         # ensure angle samples are in degrees of longitude and latitude
         full_samples_for_sky = self._convert_samples(coordinates)
@@ -279,16 +284,17 @@ function to this method when instantiating from an ultranest run number.'''
         phi_grid, theta_grid = np.meshgrid(phi, theta)
         transparent_cmap = self._make_transparent_colour_map(colour)
         
-        hp.projview(
-            np.zeros(12),
-            **{
-                'longitude_grid_spacing': 30,
-                'color': 'white',
-                'graticule': True,
-                'graticule_labels': True,
-                'cbar': False
-            }
-        )
+        if instantiate_new_axes:
+            hp.projview(
+                np.zeros(12),
+                **{
+                    'longitude_grid_spacing': 30,
+                    'color': 'white',
+                    'graticule': True,
+                    'graticule_labels': True,
+                    'cbar': False
+                }
+            )
         plt.contourf(
             phi_grid,
             theta_grid,
@@ -314,8 +320,6 @@ function to this method when instantiating from an ultranest run number.'''
             cmap=transparent_cmap,
             rasterized=rasterize_probability_mesh,
         )
-
-        plt.show()
 
     def _make_transparent_colour_map(self,
                 colour: str
