@@ -8,9 +8,15 @@ import healpy as hp
 loader = MapLoader(1, 'AA')
 density_map = loader.load(1)
 
-# downscale from nside=512 to nside=64 to speed up inference
+# downscale from nside=512 to nside=64 to speed up inference;
+# also mask 10 degrees above and below the Galactic plane
 processor = MapProcessor(density_map)
 processor.change_map_resolution(nside_out=64)
+processor.mask(
+    classification=['galactic_plane'],
+    radius=[10],
+    output_frame='C'
+)
 density_map = processor.density_map
 
 # plot the density map

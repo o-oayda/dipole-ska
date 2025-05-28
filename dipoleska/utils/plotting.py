@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 class MapPlotter:
-    def __init__(self, density_map: NDArray[np.int_]) -> None:
+    def __init__(self, density_map: NDArray[np.int_ | np.float_]) -> None:
         self.density_map = density_map
         self.default_settings = {
             'cbar': True,
@@ -103,7 +103,7 @@ class MapPlotter:
 
     @staticmethod
     def moving_average_smooth(
-            density_map: NDArray[np.int_],
+            density_map: NDArray[np.int_ | np.float_],
             weights: NDArray[np.float64] | None = None,
             angle_scale: float = 1.
     ) -> NDArray[np.float64]:

@@ -17,7 +17,7 @@ class LikelihoodMixin:
 
     def point_by_point_log_likelihood(self,
             dipole_signal: NDArray[np.float64],
-            density_map: NDArray[np.int_]
+            density_map: NDArray[np.int_ | np.float64]
     ) -> NDArray[np.float64]:
         '''
         Compute the vectorised log likelihood for many dipole maps using
@@ -44,7 +44,7 @@ class LikelihoodMixin:
 
     def poisson_log_likelihood(self,
             rate_parameter: NDArray[np.float64],
-            density_map: NDArray[np.int_]
+            density_map: NDArray[np.int_ | np.float64]
     ) -> NDArray[np.float64]:
         '''
         Compute the vectorised log likelihood for many dipole maps using the
@@ -75,22 +75,25 @@ class LikelihoodMixin:
 class MapModelMixin:
     @property
     @abstractmethod
-    def density_map(self) -> NDArray[np.int_]:
+    def density_map(self) -> NDArray[np.float64 | np.int_]:
         raise NotImplementedError('Subclass models must define a density map.')
 
-    def _get_healpy_map_attributes(self) -> None:
+    def _get_healpy_map_attributes(self,
+            density_map: NDArray[np.int_ | np.float64]
+    ) -> None:
         '''
         Retrieve key properties of a healpix map.
         '''
-        self.mean_density = np.nanmean(self.density_map)
-        self.nside = hp.get_nside(self.density_map)
+        self.mean_density = np.nanmean(density_map)
+        self.nside = hp.get_nside(density_map)
         self.npix = hp.nside2npix(self.nside)
         pixels_x, pixels_y, pixels_z = hp.pix2vec(
             self.nside,
             np.arange(self.npix)
         )
-        # this will have shape (n_pixels, 3)
-        self.pixel_vectors = np.stack([pixels_x, pixels_y, pixels_z]).T
+        self._pixel_vectors = np.stack([pixels_x, pixels_y, pixels_z]).T # (n_pix, 3)
+        self._density_map = density_map
+        self.boolean_mask = ~np.isnan(density_map)
     
     def _parse_prior_choice(self,
             default_prior: str,
@@ -139,7 +142,7 @@ class MapModelMixin:
 
 class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
     def __init__(self,
-            density_map: NDArray[np.int_],
+            density_map: NDArray[np.int_ | np.float64],
             prior: Prior | None = None,
             likelihood: Literal['point', 'poisson'] = 'point',
     ):
@@ -173,16 +176,27 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             As mentioned above, this choice will dynamically change the model
             dimensionality and the prior distributions.
         '''
-        self._density_map = density_map
-        self._get_healpy_map_attributes()
+        self._get_healpy_map_attributes(density_map)
         self._parse_prior_choice(default_prior='dipole', prior=prior)
         self._parse_likelihood_choice(likelihood)
         self._parameter_names = self.prior.parameter_names
         self.ndim = self.prior.ndim
 
     @property
-    def density_map(self) -> NDArray[np.int_]:
-        return self._density_map
+    def density_map(self) -> NDArray[np.int_ | np.float64]:
+        '''
+        Whenever the model calls the `density_map` attribute, provide only the
+        unmasked pixels for inference.
+        '''
+        return self._density_map[self.boolean_mask]
+    
+    @property
+    def pixel_vectors(self) -> NDArray[np.float64]:
+        '''
+        Whenever the model calls the `pixel_vectors` attribute, provide only
+        the vectors pointing to unmasked pixels.
+        '''
+        return self._pixel_vectors[self.boolean_mask]
 
     @property
     def prior(self) -> Prior:
