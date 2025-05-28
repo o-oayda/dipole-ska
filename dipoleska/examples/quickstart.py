@@ -2,7 +2,7 @@ from dipoleska.utils.map_read import MapLoader
 from dipoleska.utils.plotting import MapPlotter
 from dipoleska.models.dipole import Dipole
 from dipoleska.utils.map_process import MapProcessor
-import healpy as hp
+import matplotlib.pyplot as plt
 
 # load in map_1 with briggs=1 and 'AA' configuration
 loader = MapLoader(1, 'AA')
@@ -31,3 +31,5 @@ model.prior.plot_priors()
 model.run_nested_sampling()
 model.corner_plot()
 model.posterior_predictive_check()
+model.sky_direction_posterior()
+plt.show()

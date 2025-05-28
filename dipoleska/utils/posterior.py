@@ -13,6 +13,7 @@ from scipy.interpolate import interp1d
 from dipoleska.utils.math import sigma_to_prob2D
 from typing import Self, Callable, Any
 from abc import abstractmethod
+from matplotlib.patches import Patch
 
 class PosteriorMixin:
     '''
@@ -236,7 +237,8 @@ function to this method when instantiating from an ultranest run number.'''
             xsize: int = 500,
             nside: int = 256,
             rasterize_probability_mesh: bool = False,
-            instantiate_new_axes: bool = True
+            instantiate_new_axes: bool = True,
+            label: str = 'Posterior Contours'
         ) -> None:
         '''
         :param colour: Specify the matplotlib colour for the sky direction.
@@ -255,6 +257,7 @@ function to this method when instantiating from an ultranest run number.'''
             blank set of Mollweide axes. If, for example, plotting multiple sky
             directions on the same axis, set this to True for the first
             call of sky_direction_posterior then False for subsequent calls.
+        :param label: Label to display in the plot legend.
         '''
         # ensure angle samples are in degrees of longitude and latitude
         full_samples_for_sky = self._convert_samples(coordinates)
@@ -316,7 +319,7 @@ function to this method when instantiating from an ultranest run number.'''
             levels=probability_contours,
             colors=[matplotlib.colors.to_rgba(colour)], # type: ignore
             zorder=1,
-            extend='both'
+            extend='both',
         )
         plt.pcolormesh(
             phi_grid,
@@ -325,6 +328,26 @@ function to this method when instantiating from an ultranest run number.'''
             cmap=transparent_cmap,
             rasterized=rasterize_probability_mesh,
         )
+
+        # make patch for manual legend
+        contour_proxy = Patch(
+            facecolor=matplotlib.colors.to_rgba(colour, alpha=0.4),
+            edgecolor=colour,
+            linewidth=1,
+            label=label
+        )
+        
+        ax = plt.gca()
+        if not instantiate_new_axes: # assume we want multiple legend entries
+            leg = ax.get_legend()
+            handles = leg.legendHandles
+            labels = [lab.get_text() for lab in leg.texts]
+
+            handles.append(contour_proxy)
+            labels.append(label)
+            ax.legend(handles=handles, labels=labels, loc='upper right')
+        else:
+            ax.legend(handles=[contour_proxy], labels=[label], loc='upper right')
 
     def _make_transparent_colour_map(self,
                 colour: str
