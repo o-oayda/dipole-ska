@@ -209,11 +209,16 @@ function to this method when instantiating from an ultranest run number.'''
         
         except Exception as e:
             raise Exception(e)
+        
+        # reconstruct map if pixels have been masked
+        predictive_maps_for_projview = np.empty((self.npix, n_samples))
+        predictive_maps_for_projview[self.boolean_mask, :] = predictive_maps
+        predictive_maps_for_projview[~self.boolean_mask, :] = np.nan
 
         plt.figure(figsize=(4,9))  
         for i in range(n_samples):
             hp.projview(
-                predictive_maps[:, i],
+                predictive_maps_for_projview[:, i],
                 sub=(n_samples, 1, i+1), # type: ignore
                 cbar=True,
                 override_plot_properties={
