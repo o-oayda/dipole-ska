@@ -7,6 +7,7 @@ from dipoleska.utils.physics import omega_to_theta
 from matplotlib.colors import ListedColormap
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import warnings
 
 class MapPlotter:
     def __init__(self, density_map: NDArray[np.int_ | np.float_]) -> None:
@@ -44,17 +45,19 @@ class MapPlotter:
         
         if 'title' not in projview_dict:
             projview_dict['title'] = 'Density map'
-            
-        hp.projview(self.density_map,
-                    cmap=MapPlotter.cmap_scaled(cmap, cmap_alpha),
-                    **projview_dict,
-                    override_plot_properties={'vertical_tick_rotation':True 
-                                              if projview_dict.get('cb_orientation')=='vertical' 
-                                              else False,'cbar_shrink':0.5
-                                              if projview_dict.get('cb_orientation')=='vertical' 
-                                              else 0.5},
-                    )
-        return plt.gca(),plt.gcf()
+        
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', category=UserWarning)
+            hp.projview(self.density_map,
+                        cmap=MapPlotter.cmap_scaled(cmap, cmap_alpha),
+                        **projview_dict,
+                        override_plot_properties={'vertical_tick_rotation':True 
+                                                if projview_dict.get('cb_orientation')=='vertical' 
+                                                else False,'cbar_shrink':0.5
+                                                if projview_dict.get('cb_orientation')=='vertical' 
+                                                else 0.5},
+                        )
+            return plt.gca(),plt.gcf()
     
     def plot_smooth_map(self,
                         cmap: str = 'viridis',
@@ -88,17 +91,19 @@ class MapPlotter:
                 projview_dict[key] = projview_kwargs[key]
         
         if 'title' not in projview_dict:
-            projview_dict['title'] = 'Density map smoothed with moving average over'+str(moving_average_kwargs.get('angle_scale'))+' steradians'
-            
-        hp.projview(self.smoothed_map,
-                    cmap=MapPlotter.cmap_scaled(cmap, cmap_alpha),
-                    **projview_dict,
-                    override_plot_properties={'vertical_tick_rotation':True 
-                                              if projview_dict.get('cb_orientation')=='vertical' 
-                                              else False,'cbar_shrink':0.5
-                                              if projview_dict.get('cb_orientation')=='vertical' 
-                                              else 0.5},
-                    )
+            projview_dict['title'] = 'Smoothed density map'
+        
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', category=UserWarning)
+            hp.projview(self.smoothed_map,
+                        cmap=MapPlotter.cmap_scaled(cmap, cmap_alpha),
+                        **projview_dict,
+                        override_plot_properties={'vertical_tick_rotation':True 
+                                                if projview_dict.get('cb_orientation')=='vertical' 
+                                                else False,'cbar_shrink':0.5
+                                                if projview_dict.get('cb_orientation')=='vertical' 
+                                                else 0.5},
+                        )
         return plt.gca(),plt.gcf()
 
     @staticmethod
