@@ -13,15 +13,15 @@ class LikelihoodMixin:
         raise NotImplementedError('Subclass models must implement a prior property.')
 
     def point_by_point_log_likelihood(self,
-            dipole_signal: NDArray[np.float64],
+            multipole_signal: NDArray[np.float64],
             density_map: NDArray[np.int_ | np.float64]
     ) -> NDArray[np.float64]:
         '''
         Compute the vectorised log likelihood for many dipole maps using
         the point-by-point function.
 
-        :param dipole_signal: Array of dipole signals, defined as
-            f_dipole = 1 + D cos ( theta ).
+        :param multipole_signal: Array of dipole signals, defined as
+            f_dipole = 1 + D cos ( theta ), or potentially multipole signals.
             The shape of the array should be (n_pixels, n_live), where
             n_live is the number of live points used in ultranest's
             vetcorised function call and n_pixels is the number of pixels
@@ -30,8 +30,8 @@ class LikelihoodMixin:
         :return: Log likelihood corresponding to each dipole signal of shape
             (n_live,).
         '''
-        normalisation_factor = np.sum(dipole_signal, axis=0)
-        likelihood_map = dipole_signal / normalisation_factor
+        normalisation_factor = np.sum(multipole_signal, axis=0)
+        likelihood_map = multipole_signal / normalisation_factor
         log_likelihood = np.einsum(
             'i,ij->j',
             density_map,
@@ -92,6 +92,7 @@ class MapModelMixin:
         self._pixel_vectors = np.stack([pixels_x, pixels_y, pixels_z]).T # (n_pix, 3)
         self._density_map = density_map
         self.boolean_mask = ~np.isnan(density_map)
+        self.n_unmasked = np.sum(self.boolean_mask, dtype=np.float64)
 
     def _parse_prior_choice(self,
             default_prior: str,

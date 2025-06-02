@@ -87,7 +87,7 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
 
         if self.likelihood == 'point':
             return self.point_by_point_log_likelihood(
-                dipole_signal=dipole_term,
+                multipole_signal=dipole_term,
                 density_map=self.density_map
             )
         else:
