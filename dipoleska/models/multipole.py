@@ -14,6 +14,24 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             prior: Prior | None = None, 
     ):
         '''
+        Fit an abitrary number of monopoles of different orders.
+
+        :param density_map:
+            Healpy source density map, of shape (n_pix,).
+        :param prior:
+            Pass either an instance of a Prior object or leave as None.
+
+            If None is specified, the model dynamically creates a prior, taking
+            into account the number of amplitudes and multipole unit vectors
+            needed. Additionally, if a monopole is specified, the Poissonian
+            likelihood is used and the prior on the monopole amplitude is
+            automatically updated to a uniform distribuion 25% either side of
+            the mean of the density map.
+        :param ells:
+            Pass a list of multipole orders to fit, e.g. `ells = [1, 2, 3]`.
+            If a monopole (0) is specified in the list, the Poissonian
+            likelihood is used; else, the point-by-point likelihood is used.
+        
         TODO: performance is still slower than dipole-stats implementation;
             determine why this is.
         '''
