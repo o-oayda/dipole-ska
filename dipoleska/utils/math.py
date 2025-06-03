@@ -93,20 +93,90 @@ def compute_multipole_signal(
         which is the inner product of the octupole tensor and pixel unit
         vectors.
     '''
-    cartesian_multipole_vectors = vectorised_spherical_to_cartesian(
-        phi_like=multipole_longitudes,
-        theta_like=multipole_latitudes
+    ell = multipole_longitudes.shape[1]
+    
+    if ell == 1:
+        dipole_signal = compute_dipole_signal(
+            dipole_amplitude=multipole_amplitudes,
+            dipole_longitude=multipole_longitudes.squeeze(), # remove length 1 axes
+            dipole_colatitude=multipole_latitudes.squeeze(),
+            pixel_vectors=np.asarray(pixel_vectors).T # reshape to (n_pix, 3)
+        )
+        return dipole_signal
+    
+    elif ell == 2:
+        cartesian_quadrupole_vectors = vectorised_spherical_to_cartesian(
+            phi_like=multipole_longitudes,
+            theta_like=multipole_latitudes
+        )
+        quadrupole_tensor = vectorised_quadrupole_tensor(
+            amplitude_like=multipole_amplitudes,
+            cartesian_quadrupole_vectors=cartesian_quadrupole_vectors
+        )
+        quadrupole_signal = multipole_pixel_product_vectorised(
+            multipole_tensors=quadrupole_tensor,
+            pixel_vectors=pixel_vectors,
+            ell=2
+        )
+        return quadrupole_signal
+    
+    else:
+        cartesian_multipole_vectors = vectorised_spherical_to_cartesian(
+            phi_like=multipole_longitudes,
+            theta_like=multipole_latitudes
+        )
+        multipole_tensor = multipole_tensor_vectorised(
+            amplitude_like=multipole_amplitudes,
+            cartesian_multipole_vectors=cartesian_multipole_vectors
+        )
+        multipole_signal = multipole_pixel_product_vectorised(
+            multipole_tensors=multipole_tensor,
+            pixel_vectors=pixel_vectors,
+            ell=multipole_longitudes.shape[-1]
+        )
+        return multipole_signal
+
+def vectorised_quadrupole_tensor(
+        amplitude_like: NDArray[np.float64],
+        cartesian_quadrupole_vectors: NDArray[np.float64]
+    ) -> NDArray[np.float64]:
+    '''
+    :param amplitude_like: Vector of amplitudes of shape (n_live,).
+    :param cartesian_quadrupole_vectors: (3, n_live, 2) matrix, containing the
+        two unit vectors (along axis 0 and 2) for each n_live sample (along axis 1).
+    :return: Rank-3 tensor of shape (n_live, 3, 3), containing the quadrupole
+        tensor for each live point.
+    '''
+    n_samps = cartesian_quadrupole_vectors.shape[1]
+    Q_dash = np.einsum(
+        'a...,b...',
+        cartesian_quadrupole_vectors[:,:,0],
+        cartesian_quadrupole_vectors[:,:,1]
     )
-    multipole_tensor = multipole_tensor_vectorised(
-        amplitude_like=multipole_amplitudes,
-        cartesian_multipole_vectors=cartesian_multipole_vectors
-    )
-    multipole_signal = multipole_pixel_product_vectorised(
-        multipole_tensor,
-        pixel_vectors,
-        multipole_longitudes.shape[-1]
-    )
-    return multipole_signal
+    Q = np.zeros_like(Q_dash)
+
+    for i in range(n_samps):
+        Q_star = symmetrise_nxn(Q_dash[i,:,:])
+        Q[i] = amplitude_like[i] * make_3x3_traceless(Q_star)
+    return Q
+
+def symmetrise_nxn(matrix: NDArray[np.float64]) -> NDArray[np.float64]:
+    '''
+    Symmetrises square nxn matrix.
+
+    :param matrix: Square matrix.
+    :return: Symmetrised matrix.
+    '''
+    return (matrix + matrix.T) / 2
+
+def make_3x3_traceless(matrix: NDArray) -> NDArray[np.float64]:
+    '''
+    Makes a 3x3 matrix traceless.
+
+    :param matrix: 3x3 matrix.
+    :return: Traceless 3x3 matrix.
+    '''
+    return matrix - (np.trace(matrix) / 3) * np.eye(3)
 
 def vectorised_spherical_to_cartesian(phi_like, theta_like):
     '''

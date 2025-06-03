@@ -14,7 +14,8 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             prior: Prior | None = None, 
     ):
         '''
-        nice.
+        TODO: performance is still slower than dipole-stats implementation;
+            determine why this is.
         '''
         self._get_healpy_map_attributes(density_map)
         self._construct_multipole_priors(ells, prior)
@@ -165,7 +166,7 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
                 multipole_longitudes=Theta[:, phi_idxs],
                 multipole_latitudes=Theta[:, theta_idxs],
                 pixel_vectors=self.pixel_vectors_xyz
-            ) # shape?
+            )
         
         if self.monopole_is_fitted:
             mean_number_density = Theta[:, 0]
