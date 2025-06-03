@@ -92,7 +92,7 @@ class MapModelMixin:
         self._pixel_vectors = np.stack([pixels_x, pixels_y, pixels_z]).T # (n_pix, 3)
         self._density_map = density_map
         self.boolean_mask = ~np.isnan(density_map)
-        self.n_unmasked = np.sum(self.boolean_mask, dtype=np.float64)
+        self.n_unmasked = np.sum(self.boolean_mask, dtype=np.int64)
 
     def _parse_prior_choice(self,
             default_prior: str,

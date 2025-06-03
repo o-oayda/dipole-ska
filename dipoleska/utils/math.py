@@ -218,7 +218,6 @@ def symmetrise_tensor(
     and dividing by the number of permutations. 
     Adapted to use numpy and not torch, from:
     https://stackoverflow.com/questions/72380459/symmetric-random-tensor-with-high-dimension-numpy-pytorch
-    # TODO: make sure results are the same as the torch implementation.
 
     :param tensor: Tensor of arbitrary rank to make symetric.
     :return: Symmetrised tensor.
