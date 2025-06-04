@@ -2,10 +2,14 @@ from numpy.typing import NDArray
 import numpy as np
 from collections import defaultdict
 from dipoleska.utils.inference import InferenceMixin
+from dipoleska.utils.math import (
+    compute_dipole_signal, multipole_pixel_product_vectorised,
+    multipole_tensor_vectorised, vectorised_quadrupole_tensor,
+    vectorised_spherical_to_cartesian
+)
 from dipoleska.utils.posterior import PosteriorMixin
 from dipoleska.models.model_helpers import LikelihoodMixin, MapModelMixin
 from dipoleska.models.priors import Prior
-from dipoleska.utils.math import compute_multipole_signal
 
 class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
     def __init__(self,
@@ -34,6 +38,8 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         
         TODO: performance is still slower than dipole-stats implementation;
             determine why this is.
+            dipole-stats: 116s
+            dipole-ska: 158s
         '''
         self._get_healpy_map_attributes(density_map)
         self._construct_multipole_priors(ells, prior)
@@ -115,7 +121,7 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         Whenever the model calls the `density_map` attribute, provide only the
         unmasked pixels for inference.
         '''
-        return self._density_map[self.boolean_mask]
+        return self._density_map_masked
     
     @property
     def pixel_vectors(self) -> NDArray[np.float64]:
@@ -123,12 +129,11 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         Whenever the model calls the `pixel_vectors` attribute, provide only
         the vectors pointing to unmasked pixels.
         '''
-        return self._pixel_vectors[self.boolean_mask]
+        return self._pixel_vectors_masked
     
     @property
     def pixel_vectors_xyz(self) -> list[NDArray[np.float64]]:
-        x, y, z = self.pixel_vectors.T
-        return [x, y, z]
+        return self._pixel_vectors_xyz_masked
 
     @property
     def prior(self) -> Prior:
@@ -179,11 +184,10 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         for i, ((ell, phi_idxs), (ell, theta_idxs)) in enumerate(
             zip(self.phi_indices.items(), self.theta_indices.items())
         ):
-            signal += compute_multipole_signal(
+            signal += self.compute_multipole_signal(
                 multipole_amplitudes=amplitude_like[:, i],
                 multipole_longitudes=Theta[:, phi_idxs],
-                multipole_latitudes=Theta[:, theta_idxs],
-                pixel_vectors=self.pixel_vectors_xyz
+                multipole_latitudes=Theta[:, theta_idxs]
             )
         
         if self.monopole_is_fitted:
@@ -191,3 +195,68 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             return mean_number_density[None, :] * np.ones(signal.shape) * signal
         else:
             return signal
+    
+    def compute_multipole_signal(self,
+            multipole_amplitudes: NDArray[np.float64],
+            multipole_longitudes: NDArray[np.float64],
+            multipole_latitudes: NDArray[np.float64]
+    ) -> NDArray[np.float64]:
+        '''
+        :param multipole_amplitudes: Vector of multipole amplitudes, shape (n_live,).
+            For example, for an octupole, the vector would be the n_live samples of
+            the octupole amplitude.
+        :param multipole_longitudes: Matrix of multipole azimuthal angles,
+            shape (n_live, ell). For example, for an octupole, the matrix would have
+            three azimuthal (phi) angles for the three octupole unit vectors.
+        :param multipole_latitudes: Matrix of multipole polar anglea,
+            shape (n_live, ell). For example, for an octupole, the matrix would have
+            three polar (theta) angles for the three octupole unit vectors.
+        :param pixel_vectors: List of Cartesian coordinates of pixel vectors (of
+            form [X, Y, X]). X, Y, and Z are vectors of shape (n_pixels,). 
+        :return: Vectorised multipole signal of shape (n_pixels, n_live). For example,
+            for an octupole, the output O_{ijk} p_{i} p_{j} p_{k} is determined,
+            which is the inner product of the octupole tensor and pixel unit
+            vectors.
+        '''
+        ell = multipole_longitudes.shape[1]
+
+        if ell == 1:
+            dipole_signal = compute_dipole_signal(
+                dipole_amplitude=multipole_amplitudes,
+                dipole_longitude=multipole_longitudes.squeeze(), # remove length 1 axes
+                dipole_colatitude=multipole_latitudes.squeeze(),
+                pixel_vectors=self.pixel_vectors # reshape to (n_pix, 3)
+            )
+            return dipole_signal
+
+        elif ell == 2:
+            cartesian_quadrupole_vectors = vectorised_spherical_to_cartesian(
+                phi_like=multipole_longitudes,
+                theta_like=multipole_latitudes
+            )
+            quadrupole_tensor = vectorised_quadrupole_tensor(
+                amplitude_like=multipole_amplitudes,
+                cartesian_quadrupole_vectors=cartesian_quadrupole_vectors
+            )
+            quadrupole_signal = multipole_pixel_product_vectorised(
+                multipole_tensors=quadrupole_tensor,
+                pixel_vectors=self.pixel_vectors_xyz,
+                ell=2
+            )
+            return quadrupole_signal
+
+        else:
+            cartesian_multipole_vectors = vectorised_spherical_to_cartesian(
+                phi_like=multipole_longitudes,
+                theta_like=multipole_latitudes
+            )
+            multipole_tensor = multipole_tensor_vectorised(
+                amplitude_like=multipole_amplitudes,
+                cartesian_multipole_vectors=cartesian_multipole_vectors
+            )
+            multipole_signal = multipole_pixel_product_vectorised(
+                multipole_tensors=multipole_tensor,
+                pixel_vectors=self.pixel_vectors_xyz,
+                ell=multipole_longitudes.shape[-1]
+            )
+            return multipole_signal
