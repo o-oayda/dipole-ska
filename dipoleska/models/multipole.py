@@ -27,10 +27,25 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
 
             If None is specified, the model dynamically creates a prior, taking
             into account the number of amplitudes and multipole unit vectors
-            needed. Additionally, if a monopole is specified, the Poissonian
-            likelihood is used and the prior on the monopole amplitude is
-            automatically updated to a uniform distribuion 25% either side of
-            the mean of the density map.
+            needed. Additionally, if a monopole is specified in the ells kwarg,
+            the Poissonian likelihood is used and the prior on the monopole
+            amplitude is automatically updated to a uniform distribuion 25%
+            either side of the mean of the density map.
+
+            NOTE: When passing a custom prior, the dictionary must obey a
+            certain order and be named a certain way. The order should keep
+            amplitudes first, then unit vectors second. For example, if one
+            fits `ell = [0, 1, 2]`, the order of keys passed to Prior at
+            instantiation should be
+            `{'M0', 'M1', 'M2', 'phi_l1_0', 'theta_l1_0', 'phi_l2_0',
+            'theta_l2_0', 'phi_l2_1', 'theta_l1_1'}`.
+            Note that the amplitudes are first, with `M0` referring to the
+            monopole amplitude, etc. Also, for each multipole unit vector,
+            we have phi_lX_Y. X should be the order of the multipole for which
+            this unit vector applies; l1 would refer to the single dipole
+            vector. Y refers to the vector number; a quadrupole with two
+            multipole unit vectors would have two vectors, indexed by Y=0 and
+            Y=1.
         :param ells:
             Pass a list of multipole orders to fit, e.g. `ells = [1, 2, 3]`.
             If a monopole (0) is specified in the list, the Poissonian
