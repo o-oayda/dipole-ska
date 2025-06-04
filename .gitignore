@@ -186,3 +186,6 @@ ultranest_logs/*
 
 # VSCode
 .vscode/
+
+# PBS stuff
+*.pbs

@@ -129,15 +129,14 @@ def task(identifier):
     # Plot and save the free dipole posteriors for both the input and modulated maps (cornerplot)
     density_map_model1.corner_plot_double(dipole_map_model1, coordinates=['equatorial','galactic'], labels=['Input Map', 'Modulated Map'], save_path=output_path + f'map_{map_number}_cornerplot.png')
     # Plot and save the free dipole posteriors for both the input and modulated maps (mollview)
-    dipole_map_model1.sky_direction_posterior(instantiate_new_axes=True, colour='tomato')
-    density_map_model1.sky_direction_posterior(instantiate_new_axes=False, colour='cornflowerblue')
+    dipole_map_model1.sky_direction_posterior(instantiate_new_axes=True, colour='tomato', label='Modulated Map')
+    density_map_model1.sky_direction_posterior(instantiate_new_axes=False, colour='cornflowerblue', label='Input Map')
     plt.savefig(output_path + f'map_{map_number}_sky_direction_posterior.png', dpi=300, bbox_inches='tight')
 
 # %%
 ### Run the multiprocessing workflow
 max_proccesses = 20
-if max_proccesses is None:
-    max_proccesses = len(input)
+max_proccesses = min(max_proccesses, len(input))
 threads = int(os.environ['OMP_NUM_THREADS'])
 if __name__ == '__main__':
     for i in tqdm(range(0, len(input), max_proccesses)):

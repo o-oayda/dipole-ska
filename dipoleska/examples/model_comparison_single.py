@@ -115,7 +115,7 @@ np.savetxt(output_path + f'map_{map_number}_bayes_factors.txt', np.array([densit
 density_map_model1.corner_plot_double(dipole_map_model1, coordinates=['equatorial','galactic'], labels=['Input Map', 'Modulated Map'], save_path=output_path + f'map_{map_number}_cornerplot.png')
 
 # Plot and save the free dipole posteriors for both the input and modulated maps (mollview)
-dipole_map_model1.sky_direction_posterior(instantiate_new_axes=True, colour='tomato')
-density_map_model1.sky_direction_posterior(instantiate_new_axes=False, colour='cornflowerblue')
+dipole_map_model1.sky_direction_posterior(instantiate_new_axes=True, colour='tomato', label='Modulated Map')
+density_map_model1.sky_direction_posterior(instantiate_new_axes=False, colour='cornflowerblue', label='Input Map')
 plt.savefig(output_path + f'map_{map_number}_sky_direction_posterior.png', dpi=300, bbox_inches='tight')
 # %%
