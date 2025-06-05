@@ -15,6 +15,7 @@ from typing import Self, Callable, Any
 from abc import abstractmethod
 from matplotlib.patches import Patch
 from typing import Literal
+import json
 
 class PosteriorMixin:
     '''
@@ -500,14 +501,19 @@ class Posterior(PosteriorMixin):
             self.load_path
         ), f'Cannot find path ({self.load_path}).'
         
+        # extract parameter sample chain
         self._samples = np.loadtxt(self.load_path, skiprows=1)
-        self._parameter_names = list(
-            np.loadtxt(
-                self.load_path,
-                max_rows=1,
-                dtype=str
-            )
-        )
+        self._parameter_names = np.loadtxt(
+            self.load_path,
+            max_rows=1,
+            dtype=str
+        ).tolist()
+
+        # extract marginal likelihood
+        info_path = f'{run_number}/info/results.json'
+        with open(info_path) as f:
+            info = json.load(f)
+            self.log_bayesian_evidence = info['logz']
 
 class SKARun(Posterior):
     def __init__(self,
