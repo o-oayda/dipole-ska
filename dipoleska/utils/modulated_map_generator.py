@@ -8,9 +8,9 @@ import healpy as hp
 class ModulatedMapGenerator:
     def __init__(self,
             density_map: NDArray[np.int_],
-            dipole_amplitude: float,
-            dipole_longitude: float,
-            dipole_latitude: float,
+            dipole_amplitude: float | np.floating,
+            dipole_longitude: float | np.floating,
+            dipole_latitude: float | np.floating,
     ):
         '''
         Class for injecting dipole modulation into SKA maps.
