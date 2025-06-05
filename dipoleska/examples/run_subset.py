@@ -66,7 +66,7 @@ def run_kinematic_dipole(
             'theta': ['Uniform', CMB_THETA_EQ - 1e-8, CMB_THETA_EQ + 1e-8],
         }
     )
-    model = Dipole(density_map, prior=prior)
+    model = Dipole(density_map, likelihood='poisson', prior=prior)
     log_dir = f'{run_dir}/kinematic_dipole/'
     if remove_previous_runs(log_dir) == 'skip':
         return
