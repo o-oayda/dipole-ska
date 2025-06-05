@@ -177,7 +177,7 @@ def main():
                 # plotter = MapPlotter(map_to_test)
                 # plotter.plot_density_map(); plt.show()
                 
-                run_dir = f'{BASE_DIR}/map_{map_number}/{mask_name}'
+                run_dir = f'{BASE_DIR}/mult_{multiplier}/map_{map_number}/{mask_name}'
                 run_monopole(map_to_test, run_dir)
                 run_dipole(map_to_test, run_dir)
                 run_kinematic_dipole(map_to_test, run_dir, cmb_amplitude)

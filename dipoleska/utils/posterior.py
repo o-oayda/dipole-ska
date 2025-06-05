@@ -14,6 +14,7 @@ from dipoleska.utils.math import sigma_to_prob2D
 from typing import Self, Callable, Any
 from abc import abstractmethod
 from matplotlib.patches import Patch
+from typing import Literal
 
 class PosteriorMixin:
     '''
@@ -451,18 +452,25 @@ function to this method when instantiating from an ultranest run number.'''
 
 class Posterior(PosteriorMixin):
     def __init__(self,
-            equal_weighted_samples: NDArray[np.float64] | int
+            equal_weighted_samples: NDArray[np.float64] | int | str
     ) -> None:
         '''
         :param equal_weighted_samples: Can specify either an array of samples,
-            or an integer referring to a run number in ultranest_logs/, in which
-            case the samples from the run are automatically loaded.
+            an integer referring to a run number in ultranest_logs/ or a path
+            to the ultranest log directory (the one containing the subdirs
+            chains, extra, etc.). In the latter two cases, the samples from the
+            run are automatically loaded.
         '''
         if type(equal_weighted_samples) is int:
             run_number = equal_weighted_samples
             self._load_samples_from_log(run_number)
             self.loaded_from_run = True
         
+        elif type(equal_weighted_samples) is str:
+            log_dir = equal_weighted_samples
+            self._load_samples_from_log(log_dir)
+            self.loaded_from_run = True
+
         elif type(equal_weighted_samples) is np.ndarray:
             self._samples = equal_weighted_samples
             self.loaded_from_run = False
@@ -472,20 +480,69 @@ class Posterior(PosteriorMixin):
     @property
     def samples(self) -> NDArray[np.float64]:
         return self._samples
+    
+    @property
+    def parameter_names(self) -> list[str]:
+        return self._parameter_names
 
     def _load_samples_from_log(self,
-            run_number: int
+            run_number: int | str
     ) -> None:
-        self.load_path = (
-            f'ultranest_logs/run{run_number}/chains/equal_weighted_post.txt'
-        )
+        if type(run_number) is int:
+            self.load_path = (
+                f'ultranest_logs/run{run_number}/chains/equal_weighted_post.txt'
+            )
+        else:
+            assert type(run_number) is str
+            self.load_path = f'{run_number}/chains/equal_weighted_post.txt'
+        
         assert os.path.exists(
             self.load_path
         ), f'Cannot find path ({self.load_path}).'
         
         self._samples = np.loadtxt(self.load_path, skiprows=1)
-        self._parameter_names = np.loadtxt(
-            self.load_path,
-            max_rows=1,
-            dtype=str
+        self._parameter_names = list(
+            np.loadtxt(
+                self.load_path,
+                max_rows=1,
+                dtype=str
+            )
         )
+
+class SKARun(Posterior):
+    def __init__(self,
+            briggs: Literal[-1, 0, 1],
+            config: Literal['AA', 'AA4'],
+            multiplier: Literal[1, 2],
+            map_number: int,
+            mask: Literal['full', 'northern', 'northern_galactic'],
+            multipole_model: Literal[
+                'monopole',
+                'dipole',
+                'dipole_quadrupole',
+                'kinematic_dipole',
+                'kinematic_dipole_quadrupole'
+            ]
+    ) -> None:
+        if briggs == -1:
+            self.briggs = 'n1'
+        else:
+            self.briggs = str(briggs)
+        self.config = config
+        self.multiplier = multiplier
+        self.map_number = map_number
+        self.mask = mask
+        self.multipole_model = multipole_model
+
+        self._make_file_path()
+        self._load_samples_from_log(self.path)
+    
+    def _make_file_path(self):
+        self.path = (
+            f'output/ska/briggs_{self.briggs}/{self.config}'
+            f'/mult_{self.multiplier}/map_{self.map_number}/{self.mask}'
+            f'/{self.multipole_model}/run1'
+        )
+        assert os.path.exists(
+            self.path
+        ), f'Cannot find path ({self.path}).'
