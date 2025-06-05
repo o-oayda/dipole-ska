@@ -100,3 +100,22 @@ def change_source_coordinates(
 
     attr1, attr2 = frame_to_attributes[target_coordinates]
     return extract_attributes(transformed_sources, attr1, attr2)
+
+def compute_ellis_baldwin_amplitude(
+        observer_speed: float | np.floating,
+        luminosity_function_slope: float | np.floating,
+        spectral_index: float | np.floating
+) -> float | np.floating:
+    '''
+    Compute the Ellis & Baldwin (1984) amplitude expectation.
+
+    :param observer_speed: Speed of the observer as a fraction of the speed of
+        light. This is beta in the formula.
+    :param luminosity_function_slope: Exponent parametrising the cumulative
+        flux density distribution (integrated counts). This is x in the formula.
+    :param spectral_index: Exponent parametrising the SED of sources. This is
+        alpha in the formula.
+    '''
+    return (
+        2 + luminosity_function_slope * (1 + spectral_index)
+    ) * observer_speed

@@ -18,9 +18,10 @@ class ModulatedMapGenerator:
         :param density_map: Healpy density map onto which modulations are done.
         :param dipole_amplitude: Amplitude of the dipole.
         :param dipole_longitude: Longitude of the dipole, using the native
-        coordinates of the input map. Input in degrees.
+            coordinates of the input map. Input in degrees.
         :param dipole_latitude: Latitude of the dipole, using the native
-        coordinates of the input map. Input in degrees.
+            coordinates of the input map. Input in degrees latitude, running
+            from -90 to 90.
         '''
         self.density_map = density_map
         self.dipole_amplitude = dipole_amplitude

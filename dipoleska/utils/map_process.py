@@ -27,6 +27,13 @@ class MapProcessor:
         out_map[boolean_mask] = np.nan
         return out_map
     
+    def reset_mask(self) -> None:
+        '''
+        Remove a previously-created mask.
+        '''
+        self.masked_map = np.ones(len(self._density_map), dtype=np.int64)
+        self.is_masked = False
+
     def mask(self,
             classification: list[
                 Literal[
