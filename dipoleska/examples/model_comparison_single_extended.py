@@ -93,7 +93,7 @@ def run_models(MAP_FOR_INFERENCE: np.ndarray,
     # Define the model
     monopole_dipole_free_quadrupole = Multipole(MAP_FOR_INFERENCE, ells=[0,1,2])
     # Run NS
-    monopole_dipole_free_quadrupole.run_nested_sampling(reactive_sampler_kwargs={'log_dir': OUTPUT_DIR + 'runs/'})
+    monopole_dipole_free_quadrupole.run_nested_sampling(step=True, reactive_sampler_kwargs={'log_dir': OUTPUT_DIR + 'runs/'})
 
     ### Setup and run model M4: Monopole + Dipole (Fixed to CMB Expectation) + Quadrupole
     # Define the fixed prior
@@ -112,7 +112,7 @@ def run_models(MAP_FOR_INFERENCE: np.ndarray,
     # Define the model
     monopole_dipole_fixed_quadrupole = Multipole(MAP_FOR_INFERENCE, prior=prior, ells=[0,1,2])
     # Run NS
-    monopole_dipole_fixed_quadrupole.run_nested_sampling(reactive_sampler_kwargs={'log_dir': OUTPUT_DIR + 'runs/'})
+    monopole_dipole_fixed_quadrupole.run_nested_sampling(step=True, reactive_sampler_kwargs={'log_dir': OUTPUT_DIR + 'runs/'})
 
     return monopole, monopole_dipole_free, monopole_dipole_fixed, monopole_dipole_free_quadrupole, monopole_dipole_fixed_quadrupole
 
