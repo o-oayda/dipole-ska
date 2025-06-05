@@ -10,3 +10,6 @@ CMB_RA = 167.942 # degrees, Equatorial
 CMB_DEC = -6.94426 # degrees, Equatorial
 CMB_PHI_EQ = 2.93114 # radians, Equatorial
 CMB_THETA_EQ = 1.69200 # radians, colatitude Equatorial
+
+SKA_X = 1.16
+SKA_ALPHA = 0.78

@@ -8,7 +8,7 @@ from dipoleska.utils.plotting import MapPlotter
 from dipoleska.models.priors import Prior
 from numpy.typing import NDArray
 from dipoleska.utils.constants import (
-    CMB_RA, CMB_DEC, CMB_BETA, CMB_PHI_EQ, CMB_THETA_EQ
+    CMB_RA, CMB_DEC, CMB_BETA, CMB_PHI_EQ, CMB_THETA_EQ, SKA_X, SKA_ALPHA
 )
 import shutil
 import os
@@ -150,14 +150,12 @@ def main():
     BRIGGS = 1
     CONFIG = 'AA'
     MAPS_TO_TEST = [1]
-    X = 1.16
-    ALPHA = 0.78
     MASKS = [full_sky_mask, northern_sky_mask, northern_and_galactic_mask]
     MASK_NAMES = ['full', 'northern', 'northern_galactic']
     BASE_DIR = f'output/ska/briggs_{BRIGGS}/{CONFIG}'
     AMP_MULTIPLIERS = [1, 2]
     
-    cmb_amplitude = compute_ellis_baldwin_amplitude(CMB_BETA, X, ALPHA)
+    cmb_amplitude = compute_ellis_baldwin_amplitude(CMB_BETA, SKA_X, SKA_ALPHA)
     loader = MapLoader(briggs_weighting=1, configuration='AA')
 
     for multiplier in AMP_MULTIPLIERS:
