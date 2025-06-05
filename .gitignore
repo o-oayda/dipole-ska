@@ -189,3 +189,6 @@ ultranest_logs/*
 
 # PBS stuff
 *.pbs
+
+# output data
+output/
