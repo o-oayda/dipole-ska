@@ -12,6 +12,7 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             density_map: NDArray[np.int_ | np.float64],
             prior: Prior | None = None,
             likelihood: Literal['point', 'poisson'] = 'point',
+            fixed_dipole: tuple[float, float, float] | None = None
     ):
         '''
         A pure dipole model. Depending on the choice of likelihood function,
@@ -42,12 +43,20 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             
             As mentioned above, this choice will dynamically change the model
             dimensionality and the prior distributions.
+        :param fixed_dipole: Specify a tuple containing a dipole amplitude,
+            longitude in radians and colatitude in radians in order. The model
+            then fits the sum of two dipoles: this specified (fixed) dipole
+            plus a free (fitted) dipole.
         '''
         self._get_healpy_map_attributes(density_map)
         self._parse_prior_choice(default_prior='dipole', prior=prior)
         self._parse_likelihood_choice(likelihood)
         self._parameter_names = self.prior.parameter_names
         self.ndim = self.prior.ndim
+        if fixed_dipole is not None:
+            self.fixed_dipole = np.asarray(fixed_dipole)
+        else:
+            self.fixed_dipole = None
 
     @property
     def density_map(self) -> NDArray[np.int_ | np.float64]:
@@ -116,6 +125,20 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             dipole_colatitude=dipole_colatitude,
             pixel_vectors=self.pixel_vectors
         )
+
+        if self.fixed_dipole is not None:
+            # reshape fixed dipole such that it is as long as n_live
+            n_live = Theta.shape[0]
+            fixed_amplitude = np.full(n_live, self.fixed_dipole[0])
+            fixed_longitude = np.full(n_live, self.fixed_dipole[1])
+            fixed_colatitude = np.full(n_live, self.fixed_dipole[2])
+            
+            dipole_signal += compute_dipole_signal(
+                fixed_amplitude,
+                fixed_longitude,
+                fixed_colatitude,
+                pixel_vectors=self.pixel_vectors
+            )
 
         if self.likelihood == 'point':
             return 1 + dipole_signal
