@@ -192,3 +192,6 @@ ultranest_logs/*
 
 # output data
 output/
+
+# scratch/working scripts
+scratch/
