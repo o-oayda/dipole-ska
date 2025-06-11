@@ -9,6 +9,19 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 import warnings
 
+def use_tex() -> None:
+    '''
+    Call to update matplotlib's rc params, making it use latex to render text
+    in figures.
+    '''
+    plt.rcParams.update(
+        {
+            "text.usetex": True,
+            "font.family": "sans-serif",
+            "text.latex.preamble": r"\usepackage{amsmath}"
+        }
+    )
+
 class MapPlotter:
     def __init__(self, density_map: NDArray[np.int_ | np.float_]) -> None:
         self.density_map = density_map

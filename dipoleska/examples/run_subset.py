@@ -4,7 +4,7 @@ from dipoleska.utils.map_read import MapLoader
 from dipoleska.utils.modulated_map_generator import ModulatedMapGenerator
 from dipoleska.utils.physics import compute_ellis_baldwin_amplitude
 from dipoleska.utils.map_process import MapProcessor
-from dipoleska.utils.plotting import MapPlotter
+from dipoleska.utils.plotting import MapPlotter, use_tex
 from dipoleska.models.priors import Prior
 from numpy.typing import NDArray
 from dipoleska.utils.constants import (
@@ -157,6 +157,7 @@ def main():
     
     cmb_amplitude = compute_ellis_baldwin_amplitude(CMB_BETA, SKA_X, SKA_ALPHA)
     loader = MapLoader(briggs_weighting=1, configuration='AA')
+    use_tex()
 
     for multiplier in AMP_MULTIPLIERS:
         for map_number in MAPS_TO_TEST:
@@ -173,7 +174,9 @@ def main():
                 map_to_test = processor.density_map
 
                 # plotter = MapPlotter(map_to_test)
-                # plotter.plot_density_map(); plt.show()
+                # plotter.plot_density_map(projview_kwargs={'title': None, 'cbar': False})
+                # plt.savefig(f'{mask_name}.png', bbox_inches='tight')
+                # plt.show()
                 
                 run_dir = f'{BASE_DIR}/mult_{multiplier}/map_{map_number}/{mask_name}'
                 run_monopole(map_to_test, run_dir)
