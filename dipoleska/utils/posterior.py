@@ -47,7 +47,7 @@ class PosteriorMixin:
             coordinates are None, the function will just perform a spherical
             (radians, colatitude) to spherical (degrees, latitude) conversion.
         '''
-        samples_for_corner = self.samples.copy()
+        self.samples_for_corner = self.samples.copy()
 
         dipole_longitude_rad = self.samples[:, -2]
         dipole_colatitude_rad = self.samples[:, -1]
@@ -57,9 +57,9 @@ class PosteriorMixin:
         )
 
         if (coordinates is None) or ((len(coordinates) == 1)):
-            samples_for_corner[:, -2] = dipole_longitude_deg
-            samples_for_corner[:, -1] = dipole_latitude_deg
-            return samples_for_corner
+            self.samples_for_corner[:, -2] = dipole_longitude_deg
+            self.samples_for_corner[:, -1] = dipole_latitude_deg
+            return self.samples_for_corner
         else:
             transformed_longitude, transformed_latitude = change_source_coordinates(
                 dipole_longitude_deg,
@@ -67,9 +67,9 @@ class PosteriorMixin:
                 native_coordinates=coordinates[0],
                 target_coordinates=coordinates[1]
             )
-            samples_for_corner[:, -2] = transformed_longitude
-            samples_for_corner[:, -1] = transformed_latitude
-            return samples_for_corner
+            self.samples_for_corner[:, -2] = transformed_longitude
+            self.samples_for_corner[:, -1] = transformed_latitude
+            return self.samples_for_corner
 
     def corner_plot(self,
             coordinates: list[str] | None = None,
@@ -493,9 +493,11 @@ class Posterior(PosteriorMixin):
             self.load_path = (
                 f'ultranest_logs/run{run_number}/chains/equal_weighted_post.txt'
             )
+            self.info_path = f'ultranest_logs/run{run_number}/info/results.json'
         else:
             assert type(run_number) is str
             self.load_path = f'{run_number}/chains/equal_weighted_post.txt'
+            self.info_path = f'{run_number}/info/results.json'
         
         assert os.path.exists(
             self.load_path
@@ -510,8 +512,7 @@ class Posterior(PosteriorMixin):
         ).tolist()
 
         # extract marginal likelihood
-        info_path = f'{run_number}/info/results.json'
-        with open(info_path) as f:
+        with open(self.info_path) as f:
             info = json.load(f)
             self.log_bayesian_evidence = info['logz']
 
