@@ -14,6 +14,25 @@ import shutil
 import os
 import matplotlib.pyplot as plt
 import numpy as np
+from typing import Literal
+
+class SKASim:
+    '''
+    Class for running many SKA simulations.
+    '''
+    def __init__(self,
+            briggs_weighting: Literal[-1, 0, 1],
+            config: Literal['AA', 'AA4'],
+            maps: list[int] | str,
+            masks: list[str],
+            amplitude_multipliers: Literal[1, 2]
+    ) -> None:
+        self.briggs = briggs_weighting
+        self.config = config
+        self.maps = maps
+        self.masks = masks
+        self.amplitudes = amplitude_multipliers
+    
 
 def remove_previous_runs(log_dir: str) -> str | None:
     if os.path.exists(log_dir):
