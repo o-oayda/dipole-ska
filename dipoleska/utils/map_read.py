@@ -38,6 +38,7 @@ class MapLoader:
         )
         self.file_name = f'map_{self.map_number}.fits'
         try:
+            print(f'Reading in {self.file_path}/{self.file_name}...')
             self.density_map = hp.read_map(
                 f'{self.file_path}/{self.file_name}',
                 nest=False

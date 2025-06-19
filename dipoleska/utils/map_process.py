@@ -9,7 +9,8 @@ class MapProcessor:
         ):
         '''Class to mask the SKA maps
         
-        :param density_map: The SKA density map to be masked.
+        :param density_map: The SKA density map to be masked. The original map
+            is not overwritten.
         '''
         self._density_map = density_map
         self.nside = hp.npix2nside(len(self._density_map))
@@ -22,7 +23,7 @@ class MapProcessor:
         Note that the density map's data type is converted to numpy float64 to
         support np.nan for masked values.
         '''
-        out_map = self._density_map.astype(np.float64)
+        out_map = self._density_map.astype(np.float64) # makes a copy
         boolean_mask = ~self.masked_map.astype(np.bool_)
         out_map[boolean_mask] = np.nan
         return out_map
