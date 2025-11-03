@@ -12,6 +12,7 @@ from copy import deepcopy
 from tqdm import tqdm
 import warnings
 from typing import Generator
+import re
 
 
 _PARAMETER_LATEX_MAP: dict[str, str] = {
@@ -29,7 +30,22 @@ def _parameter_latex_label(parameter_name: str) -> str:
     :param parameter_name: Raw parameter name from the sampler.
     :return: LaTeX label to use in plots.
     '''
-    return _PARAMETER_LATEX_MAP.get(parameter_name, parameter_name)
+    if parameter_name in _PARAMETER_LATEX_MAP:
+        return _PARAMETER_LATEX_MAP[parameter_name]
+
+    amplitude_match = re.fullmatch(r'M(\d+)', parameter_name)
+    if amplitude_match:
+        ell = amplitude_match.group(1)
+        return rf'\mathcal{{M}}_{{{ell}}}'
+
+    angle_match = re.fullmatch(r'(phi|theta)_l(\d+)_(\d+)', parameter_name)
+    if angle_match:
+        angle_type, ell, vec_index = angle_match.groups()
+        symbol = r'\phi' if angle_type == 'phi' else r'\theta'
+        vec_display = int(vec_index)
+        return rf'{symbol}_{{\ell={ell}}}^{{({vec_display})}}'
+
+    return parameter_name
 
 
 def _sanitise_parameter_name(

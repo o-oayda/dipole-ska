@@ -1,4 +1,5 @@
 import logging
+from typing import Any, cast
 import ultranest
 import sys
 from abc import abstractmethod
@@ -81,7 +82,18 @@ class InferenceMixin:
             print(e)
         
         if self.results is not None:
-            self._samples = self.results['samples']
+            self._samples = np.atleast_2d(np.asarray(self.results['samples']))
+
+            ws_dict = cast(dict[str, Any], self.results['weighted_samples'])
+            weights = ws_dict.get('weights')
+            weights_array = np.asarray(weights, dtype=np.float64).reshape(-1)
+            self._weights = weights_array
+
+            weighted_samples = ws_dict.get('points')
+            self._weighted_samples = np.atleast_2d(
+                np.asarray(weighted_samples, dtype=np.float64)
+            )
+
             self.log_bayesian_evidence = self.results['logz']
         else:
             raise Exception('Ultranest results are undefined.')
@@ -116,3 +128,4 @@ class InferenceMixin:
         unest_handler.setFormatter(ultranest_formatter)
         unest_logger.addHandler(unest_handler)
         unest_logger.setLevel(logging.WARN)
+
