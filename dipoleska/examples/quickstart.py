@@ -29,7 +29,7 @@ model.prior.plot_priors()
 
 # results are by default saved in ultranest_logs/
 model.run_nested_sampling()
-model.corner_plot()
+model.corner_plot(coordinates=['equatorial'], backend='getdist')
 model.posterior_predictive_check()
 model.sky_direction_posterior()
 plt.show()
