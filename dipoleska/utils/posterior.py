@@ -108,7 +108,12 @@ class PosteriorMixin:
             **kwargs
         ) -> None:
         '''
-        Make corner plot for NS run using GetDist.
+        Make corner plot for NS run using getdist or corner.
+
+        ## Features
+        - If using getdist, we automatically set parameters with 'phi' in their
+        name to periodic --- this makes sure the direction marginals wrap
+        nicely at the boundaries.
 
         :param coordinates: Specify a list of coordinates to transform the angle
             indices of the corner plot. If the list has two elements, the first
@@ -139,7 +144,7 @@ class PosteriorMixin:
 
         self.samples_for_corner = samples_for_corner
 
-        # converet param names to latex strings
+        # convert param names to latex strings
         sanitized_names: list[str] = []
         latex_labels: list[str] = []
         corner_labels: list[str] = []
@@ -180,12 +185,33 @@ class PosteriorMixin:
             # Create a GetDist sample container for plotting with the paperplot style.
             samples_array = np.asarray(samples_for_corner, dtype=np.float64)
 
+            # for longitude-like parameters, assume they have 'phi' in the name
+            # and make sure getdist is aware of their periodicity
+            periodic_ranges: dict[str, list[float | bool]] = {}
+            for idx, sanitized_name in enumerate(sanitized_names):
+                if 'phi' in sanitized_name.lower():
+                    param_values = samples_array[:, idx]
+                    max_val = float(np.max(param_values))
+
+                    if coordinates is not None:
+                        periodic_ranges[sanitized_name] = [0.0, 360.0, True]
+                        assert max_val <= 360.
+                    else:
+                        periodic_ranges[sanitized_name] = [0.0, 2 * np.pi, True]
+                        assert max_val <= 2 * np.pi
+
+                    print(
+                        f'Setting parameter at index {idx} ({sanitized_name}) '
+                        f'to periodic {periodic_ranges[sanitized_name]}.'
+                    )
+
             mc_samples = MCSamples(
                 samples=samples_array,
                 weights=self.weights,
                 names=sanitized_names,
                 labels=latex_labels,
-                sampler='nested'
+                sampler='nested',
+                ranges=periodic_ranges if periodic_ranges else None
             )
             mc_samples.updateSettings({'ignore_limits': True})
 
