@@ -4,7 +4,7 @@ from dipoleska.utils.map_read import MapLoader
 from dipoleska.utils.modulated_map_generator import ModulatedMapGenerator
 from dipoleska.utils.physics import compute_ellis_baldwin_amplitude
 from dipoleska.utils.map_process import MapProcessor
-from dipoleska.utils.plotting import MapPlotter, use_tex
+from dipoleska.utils.plotting import MapPlotter
 from dipoleska.models.priors import Prior
 from numpy.typing import NDArray
 from dipoleska.utils.constants import (

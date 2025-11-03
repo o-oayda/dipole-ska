@@ -1,6 +1,5 @@
 import numpy as np
 from numpy.typing import NDArray
-from corner import corner
 import matplotlib.pyplot as plt
 import matplotlib
 from matplotlib.colors import LinearSegmentedColormap
@@ -16,6 +15,14 @@ from abc import abstractmethod
 from matplotlib.patches import Patch
 from typing import Literal
 import json
+from corner import corner
+from getdist import plots
+from getdist.mcsamples import MCSamples
+from dipoleska.style import paperplot as paperplot_style
+from dipoleska.utils.plotting import (
+    matplotlib_latex, _parameter_latex_label, _sanitise_parameter_name
+)
+
 
 class PosteriorMixin:
     '''
@@ -74,10 +81,11 @@ class PosteriorMixin:
     def corner_plot(self,
             coordinates: list[str] | None = None,
             save_path: str | None = None,
-            **corner_kwargs
+            backend: Literal['corner', 'getdist'] = 'corner',
+            **kwargs
         ) -> None:
         '''
-        Make corner plot for NS run.
+        Make corner plot for NS run using GetDist.
 
         :param coordinates: Specify a list of coordinates to transform the angle
             indices of the corner plot. If the list has two elements, the first
@@ -90,32 +98,83 @@ class PosteriorMixin:
             conversion to longitude and latitude in degrees.
         :param save_path: Specify a path to save the corner plot. If None, the
             plot will not be saved. The default is None.
+        :param backend: Choose whether to use the `corner` library for the
+            corner plot or the `getdist` library.
         '''
         if coordinates is not None:
-            samples_for_corner = self._convert_samples(coordinates)
+            self.samples_for_corner = self._convert_samples(coordinates)
         else:
-            samples_for_corner = self.samples
-        
-        corner(
-            samples_for_corner,
-            **{
-                'labels': self.parameter_names,
-                'bins': 50,
-                'show_titles': True,
-                'title_fmt': '.3g',
-                'title_quantile': (0.025,0.5,0.975),
-                'quantiles': (0.025,0.5,0.975),
-                'smooth': 1,
-                'smooth1d': 1,
-                **corner_kwargs
-            }
-        )
-        if save_path is not None:
-            plt.savefig(
-                save_path,
-                bbox_inches='tight',
-                dpi=300
+            self.samples_for_corner = self.samples
+
+        # converet param names to latex strings
+        sanitized_names: list[str] = []
+        latex_labels: list[str] = []
+        corner_labels: list[str] = []
+        seen_names: set[str] = set()
+
+        for index, raw_name in enumerate(self.parameter_names):
+            latex_label = _parameter_latex_label(raw_name)
+            if not latex_label.startswith('\\'):
+                latex_label = rf'\mathrm{{{latex_label}}}'
+            sanitized_name = _sanitise_parameter_name(raw_name, index, seen_names)
+            sanitized_names.append(sanitized_name)
+            latex_labels.append(latex_label)
+            corner_labels.append(f'${latex_label}$')
+
+        if backend == 'corner':
+            with matplotlib_latex():
+                corner(
+                    self.samples_for_corner,
+                    **{
+                        'labels': corner_labels,
+                        'bins': 50,
+                        'show_titles': True,
+                        'title_fmt': '.3g',
+                        'title_quantile': (0.025,0.5,0.975),
+                        'quantiles': (0.025,0.5,0.975),
+                        'smooth': 1,
+                        'smooth1d': 1,
+                        **kwargs
+                    }
+                )
+                if save_path is not None:
+                    plt.savefig(
+                        save_path,
+                        bbox_inches='tight',
+                        dpi=300
+                    )
+        else:
+            # Create a GetDist sample container for plotting with the paperplot style.
+            samples_array = np.asarray(self.samples_for_corner, dtype=np.float64)
+
+            mc_samples = MCSamples(
+                samples=samples_array,
+                names=sanitized_names,
+                labels=latex_labels,
+                sampler='nested'
             )
+            mc_samples.updateSettings({'ignore_limits': True})
+
+            plotter = plots.get_subplot_plotter(style=paperplot_style.style_name)
+
+            default_triangle_options = {
+                'filled': True,
+                'legend_labels': None
+            }
+            default_triangle_options.update(kwargs)
+
+            plotter.triangle_plot(
+                [mc_samples],
+                params=sanitized_names,
+                **default_triangle_options
+            )
+
+            if save_path is not None:
+                output_dir = os.path.dirname(save_path)
+                if output_dir:
+                    os.makedirs(output_dir, exist_ok=True)
+                plotter.export(save_path)
+
         plt.show()
 
     def corner_plot_double(self,

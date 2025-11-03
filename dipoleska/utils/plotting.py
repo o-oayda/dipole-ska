@@ -6,21 +6,91 @@ import healpy as hp
 from dipoleska.utils.physics import omega_to_theta
 from matplotlib.colors import ListedColormap
 import matplotlib.pyplot as plt
+import matplotlib
+from contextlib import contextmanager
+from copy import deepcopy
 from tqdm import tqdm
 import warnings
+from typing import Generator
 
-def use_tex() -> None:
+
+_PARAMETER_LATEX_MAP: dict[str, str] = {
+    'phi': r'\phi',
+    'theta': r'\theta',
+    'D': r'\mathcal{D}_{\mathrm{EB}}',
+    'Nbar': r'\bar{N}_{\mathrm{sources}}'
+}
+
+
+def _parameter_latex_label(parameter_name: str) -> str:
     '''
-    Call to update matplotlib's rc params, making it use latex to render text
-    in figures.
+    Map parameter names to LaTeX labels.
+
+    :param parameter_name: Raw parameter name from the sampler.
+    :return: LaTeX label to use in plots.
     '''
-    plt.rcParams.update(
-        {
-            "text.usetex": True,
-            "font.family": "sans-serif",
-            "text.latex.preamble": r"\usepackage{amsmath}"
-        }
+    return _PARAMETER_LATEX_MAP.get(parameter_name, parameter_name)
+
+
+def _sanitise_parameter_name(
+        name: str,
+        index: int,
+        seen_names: set[str]
+    ) -> str:
+    '''
+    Ensure GetDist parameter names are unique and free of special characters.
+
+    :param name: Candidate name for the parameter.
+    :param index: Parameter index, used when generating fallback names.
+    :param seen_names: Set of names already assigned.
+    '''
+    candidate = ''.join(
+        ch if (ch.isalnum() or ch == '_') else '_'
+        for ch in name
     )
+    if not candidate:
+        candidate = f'param_{index}'
+    if candidate[0].isdigit():
+        candidate = f'p_{candidate}'
+
+    unique_name = candidate
+    suffix = 1
+    while unique_name in seen_names:
+        unique_name = f'{candidate}_{suffix}'
+        suffix += 1
+    seen_names.add(unique_name)
+    return unique_name
+
+@contextmanager
+def matplotlib_latex(
+        font_family: str = 'sans-serif',
+        latex_preamble: str | None = r'\usepackage{amsmath}'
+    ) -> Generator[None, None, None]:
+    '''
+    Temporarily enable LaTeX rendering with an optional font family and preamble.
+
+    :param font_family: Matplotlib font family to use while LaTeX is enabled.
+    :param latex_preamble: Preamble string for LaTeX rendering. If None, the
+        preamble is left unchanged.
+    '''
+    rc_params = matplotlib.rcParams
+    previous = {
+        'text.usetex': rc_params.get('text.usetex', False),
+        'font.family': deepcopy(rc_params.get('font.family', [])),
+    }
+    if latex_preamble is not None:
+        previous['text.latex.preamble'] = deepcopy(rc_params.get('text.latex.preamble', ''))
+
+    try:
+        rc_params['text.usetex'] = True
+        if font_family:
+            rc_params['font.family'] = font_family
+        if latex_preamble is not None:
+            rc_params['text.latex.preamble'] = latex_preamble
+        yield
+    finally:
+        for key, value in previous.items():
+            rc_params[key] = value
 
 class MapPlotter:
     def __init__(self, density_map: NDArray[np.int_ | np.float_]) -> None:
