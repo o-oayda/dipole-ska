@@ -65,6 +65,7 @@ class PosteriorMixin:
         return getattr(self, '_weights', None)
 
     def _convert_samples(self,
+            samples: NDArray[np.float64],
             coordinates: list[str] | None
         ) -> NDArray[np.float64]:
         '''
@@ -75,19 +76,20 @@ class PosteriorMixin:
             coordinates are None, the function will just perform a spherical
             (radians, colatitude) to spherical (degrees, latitude) conversion.
         '''
-        self.samples_for_corner = self.samples.copy()
+        samples_array = np.asarray(samples, dtype=np.float64)
+        samples_for_corner = samples_array.copy()
 
-        dipole_longitude_rad = self.samples[:, -2]
-        dipole_colatitude_rad = self.samples[:, -1]
+        dipole_longitude_rad = samples_array[:, -2]
+        dipole_colatitude_rad = samples_array[:, -1]
 
         dipole_longitude_deg, dipole_latitude_deg = spherical_to_degrees(
             dipole_longitude_rad, dipole_colatitude_rad
         )
 
         if (coordinates is None) or ((len(coordinates) == 1)):
-            self.samples_for_corner[:, -2] = dipole_longitude_deg
-            self.samples_for_corner[:, -1] = dipole_latitude_deg
-            return self.samples_for_corner
+            samples_for_corner[:, -2] = dipole_longitude_deg
+            samples_for_corner[:, -1] = dipole_latitude_deg
+            return samples_for_corner
         else:
             transformed_longitude, transformed_latitude = change_source_coordinates(
                 dipole_longitude_deg,
@@ -95,9 +97,9 @@ class PosteriorMixin:
                 native_coordinates=coordinates[0],
                 target_coordinates=coordinates[1]
             )
-            self.samples_for_corner[:, -2] = transformed_longitude
-            self.samples_for_corner[:, -1] = transformed_latitude
-            return self.samples_for_corner
+            samples_for_corner[:, -2] = transformed_longitude
+            samples_for_corner[:, -1] = transformed_latitude
+            return samples_for_corner
 
     def corner_plot(self,
             coordinates: list[str] | None = None,
@@ -120,12 +122,22 @@ class PosteriorMixin:
         :param save_path: Specify a path to save the corner plot. If None, the
             plot will not be saved. The default is None.
         :param backend: Choose whether to use the `corner` library for the
-            corner plot or the `getdist` library.
+            corner plot or the `getdist` library. Note that if using getdist,
+            we use the weighted samples and not the equal weighted samples,
+            since the process of boostrap resampling seems to mess with the 2D
+            marginals that getdist draws.
         '''
-        if coordinates is not None:
-            self.samples_for_corner = self._convert_samples(coordinates)
+        if backend == 'corner':
+            base_samples = np.asarray(self.samples, dtype=np.float64)
         else:
-            self.samples_for_corner = self.samples
+            base_samples = np.asarray(self.weighted_samples, dtype=np.float64)
+
+        if coordinates is not None:
+            samples_for_corner = self._convert_samples(base_samples, coordinates)
+        else:
+            samples_for_corner = base_samples.copy()
+
+        self.samples_for_corner = samples_for_corner
 
         # converet param names to latex strings
         sanitized_names: list[str] = []
@@ -145,7 +157,7 @@ class PosteriorMixin:
         if backend == 'corner':
             with matplotlib_latex():
                 corner(
-                    self.samples_for_corner,
+                    samples_for_corner,
                     **{
                         'labels': corner_labels,
                         'bins': 50,
@@ -166,10 +178,11 @@ class PosteriorMixin:
                     )
         else:
             # Create a GetDist sample container for plotting with the paperplot style.
-            samples_array = np.asarray(self.samples_for_corner, dtype=np.float64)
+            samples_array = np.asarray(samples_for_corner, dtype=np.float64)
 
             mc_samples = MCSamples(
                 samples=samples_array,
+                weights=self.weights,
                 names=sanitized_names,
                 labels=latex_labels,
                 sampler='nested'
@@ -231,7 +244,7 @@ class PosteriorMixin:
         fig = plt.figure(figsize=(10, 10))
         for model, color, label in zip([self, second_model], colors, labels):
             if coordinates is not None:
-                samples_for_corner = model._convert_samples(coordinates)
+                samples_for_corner = model._convert_samples(model.samples, coordinates)
             else:
                 samples_for_corner = model.samples
             
@@ -342,7 +355,8 @@ function to this method when instantiating from an ultranest run number.'''
         :param label: Label to display in the plot legend.
         '''
         # ensure angle samples are in degrees of longitude and latitude
-        full_samples_for_sky = self._convert_samples(coordinates)
+        base_samples = np.asarray(self.samples, dtype=np.float64)
+        full_samples_for_sky = self._convert_samples(base_samples, coordinates)
 
         dipole_longitude_deg = full_samples_for_sky[:, -2]
         dipole_latitude_deg = full_samples_for_sky[:, -1]
