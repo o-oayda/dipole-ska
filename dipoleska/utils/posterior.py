@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import matplotlib
 from matplotlib.colors import LinearSegmentedColormap
 import os
+
+from ultranest.utils import resample_equal
 from dipoleska.utils.physics import (
     change_source_coordinates, spherical_to_degrees
 )
@@ -22,6 +24,7 @@ from dipoleska.style import paperplot as paperplot_style
 from dipoleska.utils.plotting import (
     matplotlib_latex, _parameter_latex_label, _sanitise_parameter_name
 )
+from pathlib import Path
 
 
 class PosteriorMixin:
@@ -32,6 +35,9 @@ class PosteriorMixin:
     @property
     @abstractmethod
     def samples(self) -> NDArray[np.float64]:
+        '''
+        Grab the equal-weighted posterior samples computed from an ultranest NS run.
+        '''
         raise NotImplementedError('Subclasses must define equal-weighted samples.')
     
     @property
@@ -42,6 +48,21 @@ class PosteriorMixin:
     @abstractmethod
     def model(self, Theta: NDArray[np.float64]) -> Any:
         raise NotImplementedError('Subclasses must define a model method.')
+
+    @property
+    def weighted_samples(self) -> NDArray[np.float64]:
+        '''
+        Grab the importance-weighted posterior samples computed from an ultranest NS run,
+        defaulting back to the equal-weighted samples if there are no weighted samples.
+        '''
+        weighted = getattr(self, '_weighted_samples', None)
+        if weighted is None:
+            return self.samples
+        return weighted
+
+    @property
+    def weights(self) -> NDArray[np.float64] | None:
+        return getattr(self, '_weights', None)
 
     def _convert_samples(self,
             coordinates: list[str] | None
@@ -512,27 +533,50 @@ function to this method when instantiating from an ultranest run number.'''
 
 class Posterior(PosteriorMixin):
     def __init__(self,
-            equal_weighted_samples: NDArray[np.float64] | int | str
+            samples: NDArray[np.float64] | int | str,
+            *,
+            weights: NDArray[np.float64] | None = None
     ) -> None:
         '''
-        :param equal_weighted_samples: Can specify either an array of samples,
+        :param samples: Can specify either an array of samples,
             an integer referring to a run number in ultranest_logs/ or a path
             to the ultranest log directory (the one containing the subdirs
             chains, extra, etc.). In the latter two cases, the samples from the
-            run are automatically loaded.
+            run are automatically loaded. When providing arrays directly, pass
+            either equal-weighted samples (leave ``weights`` as ``None``) or
+            importance-weighted samples alongside their corresponding weights.
         '''
-        if type(equal_weighted_samples) is int:
-            run_number = equal_weighted_samples
+        self._parameter_names: list[str] = []
+        self._weighted_samples: NDArray[np.float64] | None = None
+        self._weights: NDArray[np.float64] | None = None
+
+        if isinstance(samples, int):
+            run_number = samples
             self._load_samples_from_log(run_number)
             self.loaded_from_run = True
         
-        elif type(equal_weighted_samples) is str:
-            log_dir = equal_weighted_samples
+        elif isinstance(samples, str):
+            log_dir = samples
             self._load_samples_from_log(log_dir)
             self.loaded_from_run = True
 
-        elif type(equal_weighted_samples) is np.ndarray:
-            self._samples = equal_weighted_samples
+        elif isinstance(samples, np.ndarray):
+            sample_array = np.atleast_2d(np.asarray(samples, dtype=np.float64))
+            if weights is not None:
+                weights_array = np.asarray(weights, dtype=np.float64).reshape(-1)
+                if weights_array.shape[0] != sample_array.shape[0]:
+                    raise ValueError(
+                        'weights must have the same length as the number of samples.'
+                    )
+                if not np.any(weights_array > 0):
+                    raise ValueError('weights must contain at least one positive entry.')
+                resampled = resample_equal(sample_array, weights_array)
+                self._samples = resampled
+                self._weighted_samples = sample_array
+                self._weights = weights_array
+            else:
+                self._samples = sample_array
+                self._weighted_samples = sample_array
             self.loaded_from_run = False
         else:
             raise Exception('Pass either array of samples or an integer (run number).')
@@ -549,31 +593,76 @@ class Posterior(PosteriorMixin):
             run_number: int | str
     ) -> None:
         if type(run_number) is int:
-            self.load_path = (
-                f'ultranest_logs/run{run_number}/chains/equal_weighted_post.txt'
-            )
-            self.info_path = f'ultranest_logs/run{run_number}/info/results.json'
+            base_dir = Path('ultranest_logs') / f'run{run_number}'
         else:
             assert type(run_number) is str
-            self.load_path = f'{run_number}/chains/equal_weighted_post.txt'
-            self.info_path = f'{run_number}/info/results.json'
-        
-        assert os.path.exists(
-            self.load_path
-        ), f'Cannot find path ({self.load_path}).'
-        
-        # extract parameter sample chain
-        self._samples = np.loadtxt(self.load_path, skiprows=1)
+            base_dir = Path(run_number)
+
+        # ultranest directory format
+        chains_dir = base_dir / 'chains'
+        info_dir = base_dir / 'info'
+        equal_path = chains_dir / 'equal_weighted_post.txt'
+        weighted_path = chains_dir / 'weighted_post.txt'
+        info_path = str(info_dir / 'results.json')
+
+        self._load_equal_weighted_samples(equal_path)
+        self._load_weighted_samples(weighted_path)
+
+        # extract marginal likelihood
+        with open(info_path) as f:
+            info = json.load(f)
+            self.log_bayesian_evidence = info['logz']
+
+    def _load_equal_weighted_samples(self, path: Path) -> None:
+        self._samples = np.atleast_2d(
+            np.loadtxt(path, skiprows=1, dtype=np.float64)
+        )
         self._parameter_names = np.loadtxt(
-            self.load_path,
+            path,
             max_rows=1,
             dtype=str
         ).tolist()
 
-        # extract marginal likelihood
-        with open(self.info_path) as f:
-            info = json.load(f)
-            self.log_bayesian_evidence = info['logz']
+    def _load_weighted_samples(self, path: Path) -> None:
+        with path.open('r') as handle:
+            header = handle.readline().strip().split()
+
+        if len(header) < 3 or header[0].lower() != 'weight':
+            raise ValueError(
+                f'Weighted samples file {path} has unexpected header.'
+            )
+
+        raw_data = np.loadtxt(path, skiprows=1, dtype=np.float64)
+        raw_data = np.atleast_2d(raw_data)
+
+        if raw_data.shape[1] != len(header):
+            raise ValueError(
+                f'Mismatch between header and data columns in {path}.'
+            )
+
+        weights = np.asarray(raw_data[:, 0], dtype=np.float64)
+        samples = np.atleast_2d(np.asarray(raw_data[:, 2:], dtype=np.float64))
+        parameter_names = header[2:]
+
+        if len(parameter_names) != samples.shape[1]:
+            raise ValueError(
+                'Number of parameter columns does not match parameter names '
+                f'in {path}.'
+            )
+
+        if not hasattr(self, '_parameter_names') or not self._parameter_names:
+            self._parameter_names = parameter_names
+        elif list(self._parameter_names) != list(parameter_names):
+            raise ValueError(
+                'Parameter names in weighted chain do not match equal-weighted chain.'
+            )
+
+        self._weighted_samples = samples
+        self._weights = weights
+
+        # ensure equal-weighted samples exist by manually resampling with ultranest
+        if not hasattr(self, '_samples') or getattr(self, '_samples') is None:
+            self._samples = resample_equal(samples, weights)
 
 class SKARun(Posterior):
     def __init__(self,
