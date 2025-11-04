@@ -3,7 +3,9 @@ name = "dipoleska"
 version = "0.1.0"
 description = "Fit dipoles to SKA maps"
 authors = [
-    {name = "Oliver Oayda",email = "oliver.oayda@sydney.edu.au"}
+    {name = "Oliver Oayda",email = "oliver.oayda@sydney.edu.au"},
+    {name = "Vasudev Mittal",email = "vasudev.mittal@sydney.edu.au"},
+    {name = "Mali Land-Strykowski",email = "mali.land-strykowski@sydney.edu.au"}
 ]
 readme = "README.md"
 requires-python = ">=3.12"
