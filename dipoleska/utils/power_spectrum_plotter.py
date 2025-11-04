@@ -1,10 +1,12 @@
 from dipoleska.utils.map_read import MapLoader
 import healpy as hp
 import numpy as np
-from typing import Literal
+from typing import Literal, Tuple
 from numpy.typing import NDArray
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+from matplotlib.figure import Figure
+from matplotlib.axes import Axes
 
 
 
@@ -30,7 +32,7 @@ class PowerSpectrumPlotter:
         self.briggs_weighting = briggs_weighting
         self.configuration = configuration
 
-    def plot_power_spectra(self):
+    def plot_power_spectra(self) -> Tuple[Axes, Figure]:
         '''
         Plot the mean power spectrum, with 1 sigma variance shaded region,
         for the specified range of SKA maps. Also plots individual power spectra
@@ -46,8 +48,9 @@ class PowerSpectrumPlotter:
         loader = MapLoader(self.briggs_weighting, self.configuration)
         for i in range(self.map_min_number, self.map_max_number + 1):
             density_map = loader.load(i)
-            cl = hp.anafast((density_map-np.mean(density_map))/np.mean(density_map), 
-                            lmax=hp.npix2nside(len(density_map)))
+            density_contrast = (density_map - np.mean(density_map)) / np.mean(density_map)
+            cl = hp.anafast(density_contrast, 
+                            lmax=hp.npix2nside(len(density_contrast)))
             cl_collection.append(cl)
         cl_mean = np.array(cl_collection).mean(axis=0)
         cl_std = np.std(cl_collection, axis=0)
