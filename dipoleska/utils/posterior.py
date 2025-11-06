@@ -362,6 +362,12 @@ function to this method when instantiating from an ultranest run number.'''
             label: str = 'Posterior Contours'
         ) -> None:
         '''
+        :param coordinates: Specify a list of coordinates to transform the angle
+            indices of the sky projection. If the list has two elements, the first
+            coordinate is assumed to be the native coordinates and the last
+            the target coordinates. For example, specifying
+            `coordinates=['equatorial', 'galactic']` transforms from equatorial
+            to galactic.
         :param colour: Specify the matplotlib colour for the sky direction.
         :param smooth: The sigma of the Gaussian kernel used to smooth the
             healpy sample map using healpy's smoothing function.
