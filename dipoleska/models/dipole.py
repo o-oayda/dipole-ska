@@ -22,6 +22,8 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
 
         :param density_map:
             Healpy source density map, of shape (n_pix,).
+            Masked pixels (if any) should be filled with np.nan,
+            which are then automatically masked for the likelihood evaluation.
         :param prior:
             Pass either an instance of a Prior object or leave as None.
             
