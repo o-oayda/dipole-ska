@@ -11,8 +11,9 @@ from contextlib import contextmanager
 from copy import deepcopy
 from tqdm import tqdm
 import warnings
-from typing import Generator
+from typing import Generator, Sequence
 import re
+from matplotlib.patches import Patch
 
 
 _PARAMETER_LATEX_MAP: dict[str, str] = {
@@ -76,6 +77,84 @@ def _sanitise_parameter_name(
         suffix += 1
     seen_names.add(unique_name)
     return unique_name
+
+
+def plot_log_log_histogram(
+        data: Sequence[float] | NDArray[np.floating],
+        bins: int | Sequence[float] = 10,
+        color: str = 'cornflowerblue',
+        **hist_kwargs
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64], list[Patch]]:
+    '''
+    Plot a histogram with logarithmic scales on both axes, using bins that are
+    uniformly spaced in log space.
+
+    :param data: Input array-like of values; non-positive entries are dropped.
+    :param bins: Either the number of bins (int) or a sequence of log-uniform
+        bin edges to use directly.
+    :param color: Color applied to both the filled bars and their outlines.
+    :param hist_kwargs: Extra keyword arguments forwarded to ``plt.hist``.
+    :return: The ``(counts, bin_edges, patches)`` tuple returned by
+        ``plt.hist``.
+    '''
+    if 'bins' in hist_kwargs:
+        raise TypeError('Pass bin specification via the explicit `bins` argument.')
+    if 'color' in hist_kwargs:
+        raise TypeError('Pass bar color via the explicit `color` argument.')
+
+    values = np.asarray(data, dtype=np.float64)
+    positive_mask = values > 0
+    if not np.all(positive_mask):
+        removed = int(values.size - positive_mask.sum())
+        warnings.warn(
+            f'Removed {removed} non-positive entries before plotting on log-log axes.',
+            RuntimeWarning,
+            stacklevel=2
+        )
+        values = values[positive_mask]
+
+    if values.size == 0:
+        raise ValueError('Log-log histogram requires at least one positive value.')
+
+    if isinstance(bins, (int, np.integer)):
+        if bins < 1:
+            raise ValueError('Number of bins must be a positive integer.')
+        edges = np.logspace(
+            np.log10(values.min()),
+            np.log10(values.max()),
+            int(bins) + 1
+        )
+    else:
+        edges = np.asarray(bins, dtype=np.float64)
+        if np.any(edges <= 0):
+            raise ValueError('Bin edges must be positive for log spacing.')
+        log_widths = np.diff(np.log10(edges))
+        if not np.allclose(log_widths, log_widths[0]):
+            raise ValueError('Provided bin edges are not uniformly spaced in log space.')
+
+    # note: we make two plt.hist calls to get the 'solid edge with alpha' style
+    # the first call needs stepfilled with alpha, the second just an edge
+    fill_kwargs = dict(hist_kwargs)
+    fill_kwargs.setdefault('histtype', 'stepfilled')
+    fill_kwargs.setdefault('alpha', 0.3)
+    fill_kwargs['color'] = color
+    counts, bin_edges, patches = plt.hist(
+        values, bins=edges, **fill_kwargs
+    )
+
+    edge_kwargs = dict(hist_kwargs)
+    edge_kwargs.setdefault('histtype', 'step')
+    edge_kwargs['color'] = color
+    edge_kwargs['lw'] = 1.5
+    plt.hist(
+        values, bins=edges, **edge_kwargs
+    )
+
+    ax = plt.gca()
+    ax.set_xscale('log')
+    ax.set_yscale('log', nonpositive='clip')
+
+    return counts, bin_edges, patches
 
 @contextmanager
 def matplotlib_latex(
