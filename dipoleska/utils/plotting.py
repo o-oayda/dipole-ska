@@ -17,10 +17,25 @@ from matplotlib.patches import Patch
 
 
 _PARAMETER_LATEX_MAP: dict[str, str] = {
-    'phi': r'\phi',
-    'theta': r'\theta',
+    'phi': r'\phi\,(\mathrm{rad})',
+    'theta': r'\theta\,(\mathrm{rad})',
     'D': r'\mathcal{D}_{\mathrm{EB}}',
     'Nbar': r'\bar{N}_{\mathrm{sources}}'
+}
+
+ANGLE_LABEL_OVERRIDES: dict[str, dict[str, str]] = {
+    'galactic': {
+        'phi': r'l^{\circ}',
+        'theta': r'b^{\circ}',
+    },
+    'equatorial': {
+        'phi': r'\mathrm{RA}\,(^{\circ})',
+        'theta': r'\mathrm{Dec}\,(^{\circ})',
+    },
+    'ecliptic': {
+        'phi': r'\lambda^{\circ}',
+        'theta': r'\beta^{\circ}',
+    },
 }
 
 

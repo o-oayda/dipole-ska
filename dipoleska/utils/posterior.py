@@ -22,9 +22,12 @@ from getdist import plots
 from getdist.mcsamples import MCSamples
 from dipoleska.style import paperplot as paperplot_style
 from dipoleska.utils.plotting import (
-    matplotlib_latex, _parameter_latex_label, _sanitise_parameter_name
+    matplotlib_latex, _parameter_latex_label, _sanitise_parameter_name,
+    ANGLE_LABEL_OVERRIDES
 )
 from pathlib import Path
+
+SUPPORTED_ANGLE_COORDINATES: set[str] = {'galactic', 'equatorial', 'ecliptic'}
 
 
 class PosteriorMixin:
@@ -64,9 +67,48 @@ class PosteriorMixin:
     def weights(self) -> NDArray[np.float64] | None:
         return getattr(self, '_weights', None)
 
+    @staticmethod
+    def _normalise_coordinates_argument(
+            coordinates: list[str] | tuple[str, ...] | None
+        ) -> list[str] | None:
+        '''
+        Ensure the coordinates argument is well-formed before attempting any
+        transformations. Accept exactly one or two coordinate frame names drawn
+        from SUPPORTED_ANGLE_COORDINATES (case-insensitive).
+        '''
+        if coordinates is None:
+            return None
+        if not isinstance(coordinates, (list, tuple)):
+            raise TypeError(
+                'coordinates must be a list or tuple of coordinate frame names'
+            )
+        if len(coordinates) == 0:
+            raise ValueError('coordinates must contain at least one frame name')
+        if len(coordinates) > 2:
+            raise ValueError('coordinates accepts at most two frame names')
+
+        normalised: list[str] = []
+        for idx, coord in enumerate(coordinates):
+            if not isinstance(coord, str):
+                raise TypeError(
+                    f'Coordinate entry {idx} must be a string, '
+                    f'got {type(coord).__name__}'
+                )
+            stripped = coord.strip()
+            if not stripped:
+                raise ValueError(f'Coordinate entry {idx} cannot be empty')
+            lowered = stripped.lower()
+            if lowered not in SUPPORTED_ANGLE_COORDINATES:
+                raise ValueError(
+                    f'Unsupported coordinate frame "{coord}". '
+                    f'Expected one of {sorted(SUPPORTED_ANGLE_COORDINATES)}.'
+                )
+            normalised.append(lowered)
+        return normalised
+
     def _convert_samples(self,
             samples: NDArray[np.float64],
-            coordinates: list[str] | None
+            coordinates: list[str] | tuple[str, ...] | None
         ) -> NDArray[np.float64]:
         '''
         Change coordinates of samples depending on user input. Only dipole
@@ -76,6 +118,8 @@ class PosteriorMixin:
             coordinates are None, the function will just perform a spherical
             (radians, colatitude) to spherical (degrees, latitude) conversion.
         '''
+        validated_coordinates = self._normalise_coordinates_argument(coordinates)
+
         samples_array = np.asarray(samples, dtype=np.float64)
         samples_for_corner = samples_array.copy()
 
@@ -86,7 +130,7 @@ class PosteriorMixin:
             dipole_longitude_rad, dipole_colatitude_rad
         )
 
-        if (coordinates is None) or ((len(coordinates) == 1)):
+        if (validated_coordinates is None) or (len(validated_coordinates) == 1):
             samples_for_corner[:, -2] = dipole_longitude_deg
             samples_for_corner[:, -1] = dipole_latitude_deg
             return samples_for_corner
@@ -94,8 +138,8 @@ class PosteriorMixin:
             transformed_longitude, transformed_latitude = change_source_coordinates(
                 dipole_longitude_deg,
                 dipole_latitude_deg,
-                native_coordinates=coordinates[0],
-                target_coordinates=coordinates[1]
+                native_coordinates=validated_coordinates[0],
+                target_coordinates=validated_coordinates[1]
             )
             samples_for_corner[:, -2] = transformed_longitude
             samples_for_corner[:, -1] = transformed_latitude
@@ -137,12 +181,33 @@ class PosteriorMixin:
         else:
             base_samples = np.asarray(self.weighted_samples, dtype=np.float64)
 
-        if coordinates is not None:
-            samples_for_corner = self._convert_samples(base_samples, coordinates)
+        normalised_coordinates = self._normalise_coordinates_argument(coordinates)
+
+        if normalised_coordinates is not None:
+            samples_for_corner = self._convert_samples(
+                base_samples,
+                normalised_coordinates
+            )
         else:
             samples_for_corner = base_samples.copy()
 
         self.samples_for_corner = samples_for_corner
+
+        # determine if we need to override angular labels after a rotation
+        target_coordinate: str | None = None
+        if normalised_coordinates:
+            target_coordinate = normalised_coordinates[-1]
+
+        def _maybe_override_angle_label(
+                name: str,
+                base_label: str
+            ) -> str:
+            if target_coordinate is None:
+                return base_label
+            overrides = ANGLE_LABEL_OVERRIDES.get(target_coordinate)
+            if not overrides:
+                return base_label
+            return overrides.get(name, base_label)
 
         # convert param names to latex strings
         sanitized_names: list[str] = []
@@ -152,8 +217,7 @@ class PosteriorMixin:
 
         for index, raw_name in enumerate(self.parameter_names):
             latex_label = _parameter_latex_label(raw_name)
-            if not latex_label.startswith('\\'):
-                latex_label = rf'\mathrm{{{latex_label}}}'
+            latex_label = _maybe_override_angle_label(raw_name, latex_label)
             sanitized_name = _sanitise_parameter_name(raw_name, index, seen_names)
             sanitized_names.append(sanitized_name)
             latex_labels.append(latex_label)
@@ -193,7 +257,7 @@ class PosteriorMixin:
                     param_values = samples_array[:, idx]
                     max_val = float(np.max(param_values))
 
-                    if coordinates is not None:
+                    if normalised_coordinates is not None:
                         periodic_ranges[sanitized_name] = [0.0, 360.0, True]
                         assert max_val <= 360.
                     else:
