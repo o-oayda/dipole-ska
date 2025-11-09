@@ -1,7 +1,10 @@
-from typing import Literal
+from typing import Literal, Optional
 import healpy as hp
 from numpy.typing import NDArray
 import numpy as np
+import os
+from astropy.io import fits
+
 
 class MapProcessor:
     def __init__(self,
@@ -36,15 +39,16 @@ class MapProcessor:
         self.is_masked = False
 
     def mask(self,
-            classification: list[
+            output_frame: Literal['C', 'G', 'E'],
+            classification: Optional[list[
                 Literal[
                     'north_equatorial',
                     'south_equatorial',
                     'galactic_plane'
                 ]
-            ],
-            radius: list[float],
-            output_frame: Literal['C', 'G', 'E']
+            ]] = None,
+            radius: Optional[list[float]] = None,
+            load_from_file: Optional[Literal['ps', 'gal5_ps', 'gal10_ps']] = None,
     ):
         '''
         Construct a composite mask for a given set of classifications and their
@@ -61,19 +65,38 @@ class MapProcessor:
         :param radius: List of query radii in degrees, one for each classification.
         :param output_frame: Output coordinate frame ('C' for celestial,
             'G' for galactic, 'E' for ecliptic).
+        :param load_from_file: Choose a pre-computed mask to load from disk
+            based on a file identifier. This can be combined with the options
+            above to add to the loaded mask. Choices available:
+            - ps: disc masks around bright point sources
+            - gal5_ps: as above but also with a 5 deg Galactic plane mask
+            - gal10_ps: as above but with 10 deg
             
         :return: None; access masked map with this object's density_map attribute.
         '''
+        if (classification is None) and (load_from_file is None):
+            print('No mask specified in arguments. Skipping...')
+            return
+
         masked_pixels = []
-        
-        for iterator in range(len(classification)):
-            mask = self._mask_construction(
-                classification[iterator],
-                self.nside,
-                radius[iterator],
-                output_frame
+
+        if classification:
+            assert radius is not None, (
+                'Pass a list of radii when using the classification argument.'
             )
-            masked_pixels.append(mask)
+
+            for iterator in range(len(classification)):
+                mask = self._mask_construction(
+                    classification[iterator],
+                    self.nside,
+                    radius[iterator],
+                    output_frame
+                )
+                masked_pixels.append(mask)
+
+        if load_from_file:
+            file_masked_idxs = self._load_mask(load_from_file)
+            masked_pixels.append(file_masked_idxs)
         
         masked_pixels = np.concatenate(masked_pixels)
         masked_pixels = np.unique(masked_pixels)
@@ -105,7 +128,7 @@ class MapProcessor:
         :param radius: Query radius in degrees.
         :param output_frame: Output coordinate frame ('C' for celestial,
             'G' for galactic, 'E' for ecliptic).
-        
+
         :return: Array of pixel indices within the limits of the mask.
         '''
         if classification=='north_equatorial':
@@ -129,6 +152,45 @@ class MapProcessor:
             raise Exception('Mask type not recognised, see docstring of mask method.')
         
         return np.array(list(pixel), dtype='int')
+
+    def _load_mask(
+            self, 
+            file_key: Literal['ps', 'gal5_ps', 'gal10_ps']
+    ) -> NDArray[np.int_]:
+        '''
+        Load a mask from disk in the data/ska/masks directory.
+
+        :param file_key: Short file identifier, see _FILEPATH_MAP.
+
+        :return: Array of masked pixel indices, i.e., the pixels with a value
+            of 0 in the boolean mask loaded from disk.
+        '''
+        _FILEPATH_MAP = {
+            'ps': 'mask_ps.fits',
+            'gal5_ps': 'mask_gal5+_cel+_ps.fits',
+            'gal10_ps': 'mask_gal10+_cel+_ps.fits'
+        }
+        _MASK_PATH = 'data/ska/masks/'
+
+        try:
+            filename = _FILEPATH_MAP[file_key]
+        except KeyError:
+            raise KeyError(f'No file associated with key {file_key}.')
+
+        full_path = os.path.join(_MASK_PATH, filename)
+
+        if not os.path.exists(full_path):
+            raise FileNotFoundError(f'Cannot find path {full_path}.')
+
+        # this will be a boolean mask, 0 being masked
+        print(f'Loading mask from {full_path}...')
+        mask_table = fits.open(full_path)
+        mask_2D = mask_table[1].data['T'] # pyright: ignore[reportAttributeAccessIssue]
+        mask_1D = mask_2D.flatten()
+        boolean_mask = np.asarray(mask_1D, bool)
+
+        masked_pixel_idxs = np.where(~boolean_mask)[0]
+        return masked_pixel_idxs
     
     @staticmethod
     def _coordinate_conversion(lon: float,
