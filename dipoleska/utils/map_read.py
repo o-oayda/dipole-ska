@@ -1,7 +1,8 @@
-from typing import Literal
+from typing import Any, Literal
 import healpy as hp
 from numpy.typing import NDArray
 import numpy as np
+
 
 class MapLoader:
     def __init__(self,
@@ -52,3 +53,16 @@ Configuration: {self.configuration}
 Map number: {self.map_number}
 Path: {self.file_path}/{self.file_name}'''
             ) from e
+
+class MapCollectionLoader:
+    def __init__(self) -> None:
+        '''
+        PLACEHOLDER class for loading the updated SKA simulations (10.11.25).
+        The API will probably be a bit different since we have maps in addition
+        to source density maps.
+        '''
+        self._map_collections: dict[str, Any] = {}
+
+    @property
+    def map_collections(self) -> dict[str, Any]:
+        return self._map_collections
