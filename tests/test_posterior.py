@@ -100,12 +100,13 @@ def test_add_comparison_run_stores_samples():
     posterior, base_samples = _build_samples()
     comparison_samples = base_samples * 0.5
     comparison = DummyPosterior(comparison_samples, posterior.parameter_names)
+    comparison.name = 'CompRun'
 
-    posterior.add_comparison_run(comparison, name='Comparison')
+    posterior.add_comparison_run(comparison)
     runs = posterior.comparison_runs
 
     assert len(runs) == 1
-    assert runs[0].name == 'Comparison'
+    assert runs[0].name == 'CompRun'
     np.testing.assert_allclose(runs[0].samples, comparison_samples)
 
 

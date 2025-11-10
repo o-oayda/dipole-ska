@@ -707,11 +707,13 @@ function to this method when instantiating from an ultranest run number.'''
             to which unit vector.'''
             match = _MULTIPOLE_ANGLE_PATTERN.match(param_name)
             if not match:
+                if param_name == 'phi' or param_name == 'theta':
+                    return 'dipole vector'
                 return param_name
             suffix = match.group(2)
             ell_token, vec_token = suffix.split('_', maxsplit=1)
             ell_value = ell_token[1:]
-            return rf'$\ell={ell_value}$ unit vector ({vec_token})'
+            return rf'$\ell={ell_value}$ vector ({vec_token})'
 
         colour_index = 0
         for run_name, samples_for_sky in run_descriptors:
@@ -911,16 +913,25 @@ class Posterior(PosteriorMixin):
         self._parameter_names: list[str] = []
         self._weighted_samples: NDArray[np.float64] | None = None
         self._weights: NDArray[np.float64] | None = None
+        self.name = getattr(self, 'name', self.__class__.__name__)
 
         if isinstance(samples, int):
             run_number = samples
             self._load_samples_from_log(run_number)
             self.loaded_from_run = True
+            self.name = f'Run {run_number}'
         
         elif isinstance(samples, str):
             log_dir = samples
             self._load_samples_from_log(log_dir)
             self.loaded_from_run = True
+            path_obj = Path(log_dir)
+            candidate = path_obj.name or str(path_obj)
+            run_match = re.fullmatch(r'run(\d+)', candidate.lower())
+            if run_match:
+                self.name = f'Run {run_match.group(1)}'
+            else:
+                self.name = candidate
 
         elif isinstance(samples, np.ndarray):
             sample_array = np.atleast_2d(np.asarray(samples, dtype=np.float64))
