@@ -205,7 +205,7 @@ class PosteriorMixin:
     def corner_plot(self,
             coordinates: list[str] | None = None,
             save_path: str | None = None,
-            backend: Literal['corner', 'getdist'] = 'corner',
+            backend: Literal['corner', 'getdist'] = 'getdist',
             **kwargs
         ) -> None:
         '''
