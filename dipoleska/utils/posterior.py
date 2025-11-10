@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 from matplotlib.colors import LinearSegmentedColormap
 import os
+import re
 
 from ultranest.utils import resample_equal
 from dipoleska.utils.physics import (
@@ -12,7 +13,7 @@ from dipoleska.utils.physics import (
 import healpy as hp
 from scipy.interpolate import interp1d
 from dipoleska.utils.math import sigma_to_prob2D
-from typing import Self, Callable, Any
+from typing import Self, Callable, Any, Sequence
 from abc import abstractmethod
 from matplotlib.patches import Patch
 from typing import Literal
@@ -23,11 +24,12 @@ from getdist.mcsamples import MCSamples
 from dipoleska.style import paperplot as paperplot_style
 from dipoleska.utils.plotting import (
     matplotlib_latex, _parameter_latex_label, _sanitise_parameter_name,
-    ANGLE_LABEL_OVERRIDES
+    ANGLE_LABEL_OVERRIDES, apply_angle_label_override
 )
 from pathlib import Path
 
 SUPPORTED_ANGLE_COORDINATES: set[str] = {'galactic', 'equatorial', 'ecliptic'}
+_MULTIPOLE_ANGLE_PATTERN = re.compile(r'^(phi|theta)_(l\d+_\d+)$')
 
 
 class PosteriorMixin:
@@ -106,44 +108,99 @@ class PosteriorMixin:
             normalised.append(lowered)
         return normalised
 
+    def _angle_parameter_pairs(self) -> list[tuple[int, int]]:
+        '''
+        Identify (phi, theta) index pairs within the parameter list. Supports both
+        the simple dipole parameter names ('phi', 'theta') and multipole-style
+        names that look like `phi_lX_Y` / `theta_lX_Y`. This makes sure we
+        keep the angular coords of each unit vector together when e.g. rotating.
+        '''
+        index_by_name = {
+            name: idx for idx, name in enumerate(self.parameter_names)
+        }
+        pairs: list[tuple[int, int]] = []
+
+        # dipole models expose bare "phi"/"theta" entries; keep them paired
+        if ('phi' in index_by_name) and ('theta' in index_by_name):
+            pairs.append((index_by_name['phi'], index_by_name['theta']))
+
+        # multipole models label angles with a suffix, so match each phi suffix
+        # with its theta counterpart so rotations update both columns in sync
+        for name, idx in index_by_name.items():
+            match = _MULTIPOLE_ANGLE_PATTERN.match(name)
+            if not match:
+                continue
+            angle_kind, suffix = match.groups()
+            if angle_kind != 'phi':
+                continue
+            theta_name = f'theta_{suffix}'
+            theta_idx = index_by_name.get(theta_name)
+            if theta_idx is None:
+                continue
+            pairs.append((idx, theta_idx))
+
+        return pairs
+
     def _convert_samples(self,
             samples: NDArray[np.float64],
             coordinates: list[str] | tuple[str, ...] | None
         ) -> NDArray[np.float64]:
         '''
-        Change coordinates of samples depending on user input. Only dipole
-        conversions are supported at this stage.
+        Change coordinates of samples depending on user input for every angular
+        parameter pair (dipole or multipole). We read the parameter names of the
+        samples directly and regexp to infer which are longitude and latitude,
+        and properly pair each longitude with the corresponding latitude if we
+        are dealing with many multipole unit vectors.
 
         :param coordinates: See docstring of user-facing `corner_plot`. If the
-            coordinates are None, the function will just perform a spherical
-            (radians, colatitude) to spherical (degrees, latitude) conversion.
+            coordinates are None or a single-length list (containing one coord system),
+            the function will just perform a spherical (radians, colatitude) to 
+            spherical (degrees, latitude) conversion.
+            Otherwise, we do this then rotate from the native coord system to
+            the target system, where the native system is the first element in 
+            coordinates and the target system is the second element.
+
+        :return: Parameter samples chain rotated transformed to the target
+            coordinate system.
         '''
         validated_coordinates = self._normalise_coordinates_argument(coordinates)
 
         samples_array = np.asarray(samples, dtype=np.float64)
         samples_for_corner = samples_array.copy()
 
-        dipole_longitude_rad = samples_array[:, -2]
-        dipole_colatitude_rad = samples_array[:, -1]
-
-        dipole_longitude_deg, dipole_latitude_deg = spherical_to_degrees(
-            dipole_longitude_rad, dipole_colatitude_rad
-        )
-
-        if (validated_coordinates is None) or (len(validated_coordinates) == 1):
-            samples_for_corner[:, -2] = dipole_longitude_deg
-            samples_for_corner[:, -1] = dipole_latitude_deg
+        angle_pairs = self._angle_parameter_pairs()
+        if not angle_pairs:
             return samples_for_corner
-        else:
+
+        def _transform_angles(
+                longitude_deg: NDArray[np.float64],
+                latitude_deg: NDArray[np.float64]
+            ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+            if (validated_coordinates is None) or (len(validated_coordinates) == 1):
+                return longitude_deg, latitude_deg
             transformed_longitude, transformed_latitude = change_source_coordinates(
-                dipole_longitude_deg,
-                dipole_latitude_deg,
+                longitude_deg,
+                latitude_deg,
                 native_coordinates=validated_coordinates[0],
                 target_coordinates=validated_coordinates[1]
             )
-            samples_for_corner[:, -2] = transformed_longitude
-            samples_for_corner[:, -1] = transformed_latitude
-            return samples_for_corner
+            return transformed_longitude, transformed_latitude
+
+        for phi_idx, theta_idx in angle_pairs:
+            phi_rad = samples_array[:, phi_idx]
+            theta_colat_rad = samples_array[:, theta_idx]
+            longitude_deg, latitude_deg = spherical_to_degrees(
+                phi_rad,
+                theta_colat_rad
+            )
+            transformed_longitude, transformed_latitude = _transform_angles(
+                longitude_deg,
+                latitude_deg
+            )
+            samples_for_corner[:, phi_idx] = transformed_longitude
+            samples_for_corner[:, theta_idx] = transformed_latitude
+
+        return samples_for_corner
 
     def corner_plot(self,
             coordinates: list[str] | None = None,
@@ -207,7 +264,21 @@ class PosteriorMixin:
             overrides = ANGLE_LABEL_OVERRIDES.get(target_coordinate)
             if not overrides:
                 return base_label
-            return overrides.get(name, base_label)
+
+            def _apply_override(label: str, symbol_key: str) -> str:
+                return apply_angle_label_override(label, symbol_key, overrides)
+
+            if name == 'phi':
+                return _apply_override(base_label, 'phi')
+            if name == 'theta':
+                return _apply_override(base_label, 'theta')
+
+            match = _MULTIPOLE_ANGLE_PATTERN.match(name)
+            if match:
+                angle_kind = match.group(1)
+                return _apply_override(base_label, angle_kind)
+
+            return base_label
 
         # convert param names to latex strings
         sanitized_names: list[str] = []
