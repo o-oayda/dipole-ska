@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 from matplotlib.colors import LinearSegmentedColormap
 import os
+import re
 
 from ultranest.utils import resample_equal
 from dipoleska.utils.physics import (
@@ -12,7 +13,7 @@ from dipoleska.utils.physics import (
 import healpy as hp
 from scipy.interpolate import interp1d
 from dipoleska.utils.math import sigma_to_prob2D
-from typing import Self, Callable, Any
+from typing import Self, Callable, Any, Sequence
 from abc import abstractmethod
 from matplotlib.patches import Patch
 from typing import Literal
@@ -22,9 +23,13 @@ from getdist import plots
 from getdist.mcsamples import MCSamples
 from dipoleska.style import paperplot as paperplot_style
 from dipoleska.utils.plotting import (
-    matplotlib_latex, _parameter_latex_label, _sanitise_parameter_name
+    matplotlib_latex, _parameter_latex_label, _sanitise_parameter_name,
+    ANGLE_LABEL_OVERRIDES, apply_angle_label_override
 )
 from pathlib import Path
+
+SUPPORTED_ANGLE_COORDINATES: set[str] = {'galactic', 'equatorial', 'ecliptic'}
+_MULTIPOLE_ANGLE_PATTERN = re.compile(r'^(phi|theta)_(l\d+_\d+)$')
 
 
 class PosteriorMixin:
@@ -64,42 +69,138 @@ class PosteriorMixin:
     def weights(self) -> NDArray[np.float64] | None:
         return getattr(self, '_weights', None)
 
+    @staticmethod
+    def _normalise_coordinates_argument(
+            coordinates: list[str] | tuple[str, ...] | None
+        ) -> list[str] | None:
+        '''
+        Ensure the coordinates argument is well-formed before attempting any
+        transformations. Accept exactly one or two coordinate frame names drawn
+        from SUPPORTED_ANGLE_COORDINATES (case-insensitive).
+        '''
+        if coordinates is None:
+            return None
+        if not isinstance(coordinates, (list, tuple)):
+            raise TypeError(
+                'coordinates must be a list or tuple of coordinate frame names'
+            )
+        if len(coordinates) == 0:
+            raise ValueError('coordinates must contain at least one frame name')
+        if len(coordinates) > 2:
+            raise ValueError('coordinates accepts at most two frame names')
+
+        normalised: list[str] = []
+        for idx, coord in enumerate(coordinates):
+            if not isinstance(coord, str):
+                raise TypeError(
+                    f'Coordinate entry {idx} must be a string, '
+                    f'got {type(coord).__name__}'
+                )
+            stripped = coord.strip()
+            if not stripped:
+                raise ValueError(f'Coordinate entry {idx} cannot be empty')
+            lowered = stripped.lower()
+            if lowered not in SUPPORTED_ANGLE_COORDINATES:
+                raise ValueError(
+                    f'Unsupported coordinate frame "{coord}". '
+                    f'Expected one of {sorted(SUPPORTED_ANGLE_COORDINATES)}.'
+                )
+            normalised.append(lowered)
+        return normalised
+
+    def _angle_parameter_pairs(self) -> list[tuple[int, int]]:
+        '''
+        Identify (phi, theta) index pairs within the parameter list. Supports both
+        the simple dipole parameter names ('phi', 'theta') and multipole-style
+        names that look like `phi_lX_Y` / `theta_lX_Y`. This makes sure we
+        keep the angular coords of each unit vector together when e.g. rotating.
+        '''
+        index_by_name = {
+            name: idx for idx, name in enumerate(self.parameter_names)
+        }
+        pairs: list[tuple[int, int]] = []
+
+        # dipole models expose bare "phi"/"theta" entries; keep them paired
+        if ('phi' in index_by_name) and ('theta' in index_by_name):
+            pairs.append((index_by_name['phi'], index_by_name['theta']))
+
+        # multipole models label angles with a suffix, so match each phi suffix
+        # with its theta counterpart so rotations update both columns in sync
+        for name, idx in index_by_name.items():
+            match = _MULTIPOLE_ANGLE_PATTERN.match(name)
+            if not match:
+                continue
+            angle_kind, suffix = match.groups()
+            if angle_kind != 'phi':
+                continue
+            theta_name = f'theta_{suffix}'
+            theta_idx = index_by_name.get(theta_name)
+            if theta_idx is None:
+                continue
+            pairs.append((idx, theta_idx))
+
+        return pairs
+
     def _convert_samples(self,
             samples: NDArray[np.float64],
-            coordinates: list[str] | None
+            coordinates: list[str] | tuple[str, ...] | None
         ) -> NDArray[np.float64]:
         '''
-        Change coordinates of samples depending on user input. Only dipole
-        conversions are supported at this stage.
+        Change coordinates of samples depending on user input for every angular
+        parameter pair (dipole or multipole). We read the parameter names of the
+        samples directly and regexp to infer which are longitude and latitude,
+        and properly pair each longitude with the corresponding latitude if we
+        are dealing with many multipole unit vectors.
 
         :param coordinates: See docstring of user-facing `corner_plot`. If the
-            coordinates are None, the function will just perform a spherical
-            (radians, colatitude) to spherical (degrees, latitude) conversion.
+            coordinates are None or a single-length list (containing one coord system),
+            the function will just perform a spherical (radians, colatitude) to 
+            spherical (degrees, latitude) conversion.
+            Otherwise, we do this then rotate from the native coord system to
+            the target system, where the native system is the first element in 
+            coordinates and the target system is the second element.
+
+        :return: Parameter samples chain rotated transformed to the target
+            coordinate system.
         '''
+        validated_coordinates = self._normalise_coordinates_argument(coordinates)
+
         samples_array = np.asarray(samples, dtype=np.float64)
         samples_for_corner = samples_array.copy()
 
-        dipole_longitude_rad = samples_array[:, -2]
-        dipole_colatitude_rad = samples_array[:, -1]
-
-        dipole_longitude_deg, dipole_latitude_deg = spherical_to_degrees(
-            dipole_longitude_rad, dipole_colatitude_rad
-        )
-
-        if (coordinates is None) or ((len(coordinates) == 1)):
-            samples_for_corner[:, -2] = dipole_longitude_deg
-            samples_for_corner[:, -1] = dipole_latitude_deg
+        angle_pairs = self._angle_parameter_pairs()
+        if not angle_pairs:
             return samples_for_corner
-        else:
+
+        def _transform_angles(
+                longitude_deg: NDArray[np.float64],
+                latitude_deg: NDArray[np.float64]
+            ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+            if (validated_coordinates is None) or (len(validated_coordinates) == 1):
+                return longitude_deg, latitude_deg
             transformed_longitude, transformed_latitude = change_source_coordinates(
-                dipole_longitude_deg,
-                dipole_latitude_deg,
-                native_coordinates=coordinates[0],
-                target_coordinates=coordinates[1]
+                longitude_deg,
+                latitude_deg,
+                native_coordinates=validated_coordinates[0],
+                target_coordinates=validated_coordinates[1]
             )
-            samples_for_corner[:, -2] = transformed_longitude
-            samples_for_corner[:, -1] = transformed_latitude
-            return samples_for_corner
+            return transformed_longitude, transformed_latitude
+
+        for phi_idx, theta_idx in angle_pairs:
+            phi_rad = samples_array[:, phi_idx]
+            theta_colat_rad = samples_array[:, theta_idx]
+            longitude_deg, latitude_deg = spherical_to_degrees(
+                phi_rad,
+                theta_colat_rad
+            )
+            transformed_longitude, transformed_latitude = _transform_angles(
+                longitude_deg,
+                latitude_deg
+            )
+            samples_for_corner[:, phi_idx] = transformed_longitude
+            samples_for_corner[:, theta_idx] = transformed_latitude
+
+        return samples_for_corner
 
     def corner_plot(self,
             coordinates: list[str] | None = None,
@@ -137,12 +238,47 @@ class PosteriorMixin:
         else:
             base_samples = np.asarray(self.weighted_samples, dtype=np.float64)
 
-        if coordinates is not None:
-            samples_for_corner = self._convert_samples(base_samples, coordinates)
+        normalised_coordinates = self._normalise_coordinates_argument(coordinates)
+
+        if normalised_coordinates is not None:
+            samples_for_corner = self._convert_samples(
+                base_samples,
+                normalised_coordinates
+            )
         else:
             samples_for_corner = base_samples.copy()
 
         self.samples_for_corner = samples_for_corner
+
+        # determine if we need to override angular labels after a rotation
+        target_coordinate: str | None = None
+        if normalised_coordinates:
+            target_coordinate = normalised_coordinates[-1]
+
+        def _maybe_override_angle_label(
+                name: str,
+                base_label: str
+            ) -> str:
+            if target_coordinate is None:
+                return base_label
+            overrides = ANGLE_LABEL_OVERRIDES.get(target_coordinate)
+            if not overrides:
+                return base_label
+
+            def _apply_override(label: str, symbol_key: str) -> str:
+                return apply_angle_label_override(label, symbol_key, overrides)
+
+            if name == 'phi':
+                return _apply_override(base_label, 'phi')
+            if name == 'theta':
+                return _apply_override(base_label, 'theta')
+
+            match = _MULTIPOLE_ANGLE_PATTERN.match(name)
+            if match:
+                angle_kind = match.group(1)
+                return _apply_override(base_label, angle_kind)
+
+            return base_label
 
         # convert param names to latex strings
         sanitized_names: list[str] = []
@@ -152,8 +288,7 @@ class PosteriorMixin:
 
         for index, raw_name in enumerate(self.parameter_names):
             latex_label = _parameter_latex_label(raw_name)
-            if not latex_label.startswith('\\'):
-                latex_label = rf'\mathrm{{{latex_label}}}'
+            latex_label = _maybe_override_angle_label(raw_name, latex_label)
             sanitized_name = _sanitise_parameter_name(raw_name, index, seen_names)
             sanitized_names.append(sanitized_name)
             latex_labels.append(latex_label)
@@ -193,7 +328,7 @@ class PosteriorMixin:
                     param_values = samples_array[:, idx]
                     max_val = float(np.max(param_values))
 
-                    if coordinates is not None:
+                    if normalised_coordinates is not None:
                         periodic_ranges[sanitized_name] = [0.0, 360.0, True]
                         assert max_val <= 360.
                     else:
@@ -353,6 +488,7 @@ function to this method when instantiating from an ultranest run number.'''
     def sky_direction_posterior(self,
             coordinates: list[str] | None = None,
             colour: str = 'tomato',
+            colours: Sequence[str] | None = None,
             smooth: None | float = 0.05,
             contour_levels: list[float] = [0.5, 1., 1.5, 2.],
             xsize: int = 500,
@@ -368,7 +504,10 @@ function to this method when instantiating from an ultranest run number.'''
             the target coordinates. For example, specifying
             `coordinates=['equatorial', 'galactic']` transforms from equatorial
             to galactic.
-        :param colour: Specify the matplotlib colour for the sky direction.
+        :param colour: Legacy single-colour setting used when only one angular
+            vector is present; also acts as the first fallback colour.
+        :param colours: Optional sequence of colours to cycle through when plotting
+            multiple angular parameter pairs.
         :param smooth: The sigma of the Gaussian kernel used to smooth the
             healpy sample map using healpy's smoothing function.
         :param contour_levels: The significance levels (in units of sigma)
@@ -386,40 +525,35 @@ function to this method when instantiating from an ultranest run number.'''
             call of sky_direction_posterior then False for subsequent calls.
         :param label: Label to display in the plot legend.
         '''
-        # ensure angle samples are in degrees of longitude and latitude
+        angle_pairs = self._angle_parameter_pairs()
+        if not angle_pairs:
+            raise ValueError('No angular parameter pairs were found to plot.')
+
         base_samples = np.asarray(self.samples, dtype=np.float64)
         full_samples_for_sky = self._convert_samples(base_samples, coordinates)
 
-        dipole_longitude_deg = full_samples_for_sky[:, -2]
-        dipole_latitude_deg = full_samples_for_sky[:, -1]
+        # build colour cycle ensuring at least as many distinct colours as pairs
+        default_palette = [
+            colour,
+            'cornflowerblue',
+            'mediumseagreen',
+            'goldenrod',
+            'mediumpurple',
+            'darkcyan'
+        ]
+        if colours is not None:
+            colour_cycle = list(colours)
+            if not colour_cycle:
+                colour_cycle = default_palette.copy()
+        else:
+            colour_cycle = default_palette.copy()
 
-        probability_map = self._samples_to_healpy_map(
-            dipole_longitude_deg,
-            dipole_latitude_deg,
-            lonlat=True,
-            smooth=smooth,
-            nside=nside
-        )
+        # extend palette to cover all pairs without reusing the same colour immediately
+        idx = 0
+        while len(colour_cycle) < len(angle_pairs):
+            colour_cycle.append(default_palette[idx % len(default_palette)])
+            idx += 1
 
-        phi, theta, projected_map = hp.projview(
-            probability_map,
-            return_only_data=True,
-            xsize=xsize
-        )
-
-        # NOTE: the projected map will have more bins therefore will not sum to
-        # one; it also has -infs; remove these and renormalise
-        projected_map[projected_map == -np.inf] = 0
-        projected_map /= np.sum(projected_map)
-        probability_contours = self._compute_2D_contours(
-            projected_map,
-            contour_levels
-        )
-
-        # draw sky plots
-        phi_grid, theta_grid = np.meshgrid(phi, theta)
-        transparent_cmap = self._make_transparent_colour_map(colour)
-        
         if instantiate_new_axes:
             hp.projview(
                 np.zeros(12),
@@ -431,51 +565,104 @@ function to this method when instantiating from an ultranest run number.'''
                     'cbar': False
                 }
             )
-        plt.contourf(
-            phi_grid,
-            theta_grid,
-            projected_map,
-            levels=probability_contours,
-            cmap=transparent_cmap,
-            zorder=1,
-            extend='both'
-        )
-        plt.contour(
-            phi_grid,
-            theta_grid,
-            projected_map,
-            levels=probability_contours,
-            colors=[matplotlib.colors.to_rgba(colour)], # type: ignore
-            zorder=1,
-            extend='both',
-        )
-        plt.pcolormesh(
-            phi_grid,
-            theta_grid,
-            projected_map,
-            cmap=transparent_cmap,
-            rasterized=rasterize_probability_mesh,
-        )
 
-        # make patch for manual legend
-        contour_proxy = Patch(
-            facecolor=matplotlib.colors.to_rgba(colour, alpha=0.4),
-            edgecolor=colour,
-            linewidth=1,
-            label=label
-        )
-        
         ax = plt.gca()
-        if not instantiate_new_axes: # assume we want multiple legend entries
+        existing_handles: list[Any] = []
+        existing_labels: list[str] = []
+        if not instantiate_new_axes:
             leg = ax.get_legend()
-            handles = leg.legendHandles
-            labels = [lab.get_text() for lab in leg.texts]
+            if leg is not None:
+                existing_handles = list(leg.legendHandles)
+                existing_labels = [lab.get_text() for lab in leg.texts]
 
+        handles = existing_handles
+        labels_list = existing_labels
+
+        def _format_angle_descriptor(param_name: str) -> str:
+            '''Small helper to populate legend with which colour corresponds
+            to which unit vector.'''
+            match = _MULTIPOLE_ANGLE_PATTERN.match(param_name)
+            if not match:
+                return param_name
+            suffix = match.group(2)
+            ell_token, vec_token = suffix.split('_', maxsplit=1)
+            ell_value = ell_token[1:]
+            return rf'$\ell={ell_value}$ unit vector ({vec_token})'
+
+        for pair_index, (phi_idx, theta_idx) in enumerate(angle_pairs):
+            current_colour = colour_cycle[pair_index % len(colour_cycle)]
+            longitude_deg = full_samples_for_sky[:, phi_idx]
+            latitude_deg = full_samples_for_sky[:, theta_idx]
+
+            probability_map = self._samples_to_healpy_map(
+                longitude_deg,
+                latitude_deg,
+                lonlat=True,
+                smooth=smooth,
+                nside=nside
+            )
+
+            phi, theta, projected_map = hp.projview(
+                probability_map,
+                return_only_data=True,
+                xsize=xsize
+            )
+
+            # NOTE: the projected map will have more bins therefore will not sum to
+            # one; it also has -infs; remove these and renormalise
+            projected_map[projected_map == -np.inf] = 0
+            projected_map /= np.sum(projected_map)
+            probability_contours = self._compute_2D_contours(
+                projected_map,
+                contour_levels
+            )
+
+            phi_grid, theta_grid = np.meshgrid(phi, theta)
+            transparent_cmap = self._make_transparent_colour_map(current_colour)
+
+            plt.contourf(
+                phi_grid,
+                theta_grid,
+                projected_map,
+                levels=probability_contours,
+                cmap=transparent_cmap,
+                zorder=1,
+                extend='both'
+            )
+            plt.contour(
+                phi_grid,
+                theta_grid,
+                projected_map,
+                levels=probability_contours,
+                colors=[matplotlib.colors.to_rgba(current_colour)], # type: ignore
+                zorder=1,
+                extend='both',
+            )
+            plt.pcolormesh(
+                phi_grid,
+                theta_grid,
+                projected_map,
+                cmap=transparent_cmap,
+                rasterized=rasterize_probability_mesh,
+            )
+
+            if len(angle_pairs) == 1:
+                descriptor = label if label else _format_angle_descriptor(
+                    self.parameter_names[phi_idx]
+                )
+                pair_label = descriptor
+            else:
+                pair_label = _format_angle_descriptor(self.parameter_names[phi_idx])
+            contour_proxy = Patch(
+                facecolor=matplotlib.colors.to_rgba(current_colour, alpha=0.4),
+                edgecolor=current_colour,
+                linewidth=1,
+                label=pair_label
+            )
             handles.append(contour_proxy)
-            labels.append(label)
-            ax.legend(handles=handles, labels=labels, loc='upper right')
-        else:
-            ax.legend(handles=[contour_proxy], labels=[label], loc='upper right')
+            labels_list.append(pair_label)
+
+        ax.legend(handles=handles, labels=labels_list, loc='upper right')
 
     def _make_transparent_colour_map(self,
                 colour: str

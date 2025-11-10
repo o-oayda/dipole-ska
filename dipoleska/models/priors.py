@@ -8,6 +8,8 @@ from typing import Dict
 from numpy.typing import NDArray
 import numpy as np
 import matplotlib.pyplot as plt
+from dipoleska.utils.plotting import _parameter_latex_label
+
 
 class Prior:
     def __init__(self,
@@ -114,7 +116,7 @@ class Prior:
         intends.
         '''
         uniform_deviates = np.random.rand(1_000_000)
-        _, axs = plt.subplots(
+        fig, axs = plt.subplots(
             nrows=1,
             ncols=len(self.prior_transforms),
             layout='constrained'
@@ -146,7 +148,12 @@ class Prior:
             #     color='tomato',
             #     linewidth=1.5
             # )
-            ax.set_title(f'{self.parameter_names[i]}')
+
+            ax.set_yticks([])
+            latex_label = _parameter_latex_label(self.parameter_names[i])
+            ax.set_title(f'${latex_label}$')
+
+        fig.supylabel('Probability density')
         
         plt.show()
 

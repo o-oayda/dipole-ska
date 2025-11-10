@@ -17,11 +17,54 @@ from matplotlib.patches import Patch
 
 
 _PARAMETER_LATEX_MAP: dict[str, str] = {
-    'phi': r'\phi',
-    'theta': r'\theta',
+    'phi': r'\phi\,(\mathrm{rad})',
+    'theta': r'\theta\,(\mathrm{rad})',
     'D': r'\mathcal{D}_{\mathrm{EB}}',
     'Nbar': r'\bar{N}_{\mathrm{sources}}'
 }
+
+ANGLE_LABEL_OVERRIDES: dict[str, dict[str, dict[str, str]]] = {
+    'galactic': {
+        'phi': {'symbol': r'l', 'unit': r'\,(^{\circ})'},
+        'theta': {'symbol': r'b', 'unit': r'\,(^{\circ})'},
+    },
+    'equatorial': {
+        'phi': {'symbol': r'\mathrm{RA}', 'unit': r'\,(^{\circ})'},
+        'theta': {'symbol': r'\mathrm{Dec}', 'unit': r'\,(^{\circ})'},
+    },
+    'ecliptic': {
+        'phi': {'symbol': r'\lambda', 'unit': r'\,(^{\circ})'},
+        'theta': {'symbol': r'\beta', 'unit': r'\,(^{\circ})'},
+    },
+}
+
+def apply_angle_label_override(
+        base_label: str,
+        angle_key: str,
+        overrides: dict[str, dict[str, str]]
+    ) -> str:
+    '''
+    Swap the leading angular symbol in ``base_label`` using the provided override
+    map (typically pulled from ``ANGLE_LABEL_OVERRIDES``). Keeps any existing
+    subscripts, superscripts, or suffixes intact while appending the override's
+    unit string at the end.
+    '''
+    override = overrides.get(angle_key)
+    if not override:
+        return base_label
+
+    base_symbol = r'\phi' if angle_key == 'phi' else r'\theta'
+    if not base_label.startswith(base_symbol):
+        return base_label
+
+    rest = base_label[len(base_symbol):]
+    rad_suffix = r'\,(\mathrm{rad})'
+    if rest.startswith(rad_suffix):
+        rest = rest[len(rad_suffix):]
+
+    symbol = override.get('symbol', base_symbol)
+    unit = override.get('unit', '')
+    return f'{symbol}{rest}{unit}'
 
 
 def _parameter_latex_label(parameter_name: str) -> str:
