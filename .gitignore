@@ -195,3 +195,6 @@ output/
 
 # scratch/working scripts
 scratch/
+
+# .txt files from mapcollections
+data/ska/mapcollections/*.txt
