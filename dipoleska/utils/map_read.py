@@ -86,7 +86,7 @@ class MapCollectionLoader:
         self.map_types = map_types
         self.file_configuration = (
             f'_nside{self.nside}_flux{self.lower_flux_limit}_snr{self.snr_cut}'
-            f'_z{self.lower_z_limit}_z{self.upper_z_limit}_gal{self.gal_cut}'
+            f'_z{self.lower_z_limit}_z{self.upper_z_limit}_gal{self.gal_cut}.0'
         )
         self.map_dict = {
                         'counts': ('countmap', '.fits'),
