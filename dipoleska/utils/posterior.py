@@ -488,6 +488,7 @@ function to this method when instantiating from an ultranest run number.'''
     def sky_direction_posterior(self,
             coordinates: list[str] | None = None,
             colour: str = 'tomato',
+            colours: Sequence[str] | None = None,
             smooth: None | float = 0.05,
             contour_levels: list[float] = [0.5, 1., 1.5, 2.],
             xsize: int = 500,
@@ -503,7 +504,10 @@ function to this method when instantiating from an ultranest run number.'''
             the target coordinates. For example, specifying
             `coordinates=['equatorial', 'galactic']` transforms from equatorial
             to galactic.
-        :param colour: Specify the matplotlib colour for the sky direction.
+        :param colour: Legacy single-colour setting used when only one angular
+            vector is present; also acts as the first fallback colour.
+        :param colours: Optional sequence of colours to cycle through when plotting
+            multiple angular parameter pairs.
         :param smooth: The sigma of the Gaussian kernel used to smooth the
             healpy sample map using healpy's smoothing function.
         :param contour_levels: The significance levels (in units of sigma)
@@ -521,40 +525,35 @@ function to this method when instantiating from an ultranest run number.'''
             call of sky_direction_posterior then False for subsequent calls.
         :param label: Label to display in the plot legend.
         '''
-        # ensure angle samples are in degrees of longitude and latitude
+        angle_pairs = self._angle_parameter_pairs()
+        if not angle_pairs:
+            raise ValueError('No angular parameter pairs were found to plot.')
+
         base_samples = np.asarray(self.samples, dtype=np.float64)
         full_samples_for_sky = self._convert_samples(base_samples, coordinates)
 
-        dipole_longitude_deg = full_samples_for_sky[:, -2]
-        dipole_latitude_deg = full_samples_for_sky[:, -1]
+        # build colour cycle ensuring at least as many distinct colours as pairs
+        default_palette = [
+            colour,
+            'cornflowerblue',
+            'mediumseagreen',
+            'goldenrod',
+            'mediumpurple',
+            'darkcyan'
+        ]
+        if colours is not None:
+            colour_cycle = list(colours)
+            if not colour_cycle:
+                colour_cycle = default_palette.copy()
+        else:
+            colour_cycle = default_palette.copy()
 
-        probability_map = self._samples_to_healpy_map(
-            dipole_longitude_deg,
-            dipole_latitude_deg,
-            lonlat=True,
-            smooth=smooth,
-            nside=nside
-        )
+        # extend palette to cover all pairs without reusing the same colour immediately
+        idx = 0
+        while len(colour_cycle) < len(angle_pairs):
+            colour_cycle.append(default_palette[idx % len(default_palette)])
+            idx += 1
 
-        phi, theta, projected_map = hp.projview(
-            probability_map,
-            return_only_data=True,
-            xsize=xsize
-        )
-
-        # NOTE: the projected map will have more bins therefore will not sum to
-        # one; it also has -infs; remove these and renormalise
-        projected_map[projected_map == -np.inf] = 0
-        projected_map /= np.sum(projected_map)
-        probability_contours = self._compute_2D_contours(
-            projected_map,
-            contour_levels
-        )
-
-        # draw sky plots
-        phi_grid, theta_grid = np.meshgrid(phi, theta)
-        transparent_cmap = self._make_transparent_colour_map(colour)
-        
         if instantiate_new_axes:
             hp.projview(
                 np.zeros(12),
@@ -566,51 +565,104 @@ function to this method when instantiating from an ultranest run number.'''
                     'cbar': False
                 }
             )
-        plt.contourf(
-            phi_grid,
-            theta_grid,
-            projected_map,
-            levels=probability_contours,
-            cmap=transparent_cmap,
-            zorder=1,
-            extend='both'
-        )
-        plt.contour(
-            phi_grid,
-            theta_grid,
-            projected_map,
-            levels=probability_contours,
-            colors=[matplotlib.colors.to_rgba(colour)], # type: ignore
-            zorder=1,
-            extend='both',
-        )
-        plt.pcolormesh(
-            phi_grid,
-            theta_grid,
-            projected_map,
-            cmap=transparent_cmap,
-            rasterized=rasterize_probability_mesh,
-        )
 
-        # make patch for manual legend
-        contour_proxy = Patch(
-            facecolor=matplotlib.colors.to_rgba(colour, alpha=0.4),
-            edgecolor=colour,
-            linewidth=1,
-            label=label
-        )
-        
         ax = plt.gca()
-        if not instantiate_new_axes: # assume we want multiple legend entries
+        existing_handles: list[Any] = []
+        existing_labels: list[str] = []
+        if not instantiate_new_axes:
             leg = ax.get_legend()
-            handles = leg.legendHandles
-            labels = [lab.get_text() for lab in leg.texts]
+            if leg is not None:
+                existing_handles = list(leg.legendHandles)
+                existing_labels = [lab.get_text() for lab in leg.texts]
 
+        handles = existing_handles
+        labels_list = existing_labels
+
+        def _format_angle_descriptor(param_name: str) -> str:
+            '''Small helper to populate legend with which colour corresponds
+            to which unit vector.'''
+            match = _MULTIPOLE_ANGLE_PATTERN.match(param_name)
+            if not match:
+                return param_name
+            suffix = match.group(2)
+            ell_token, vec_token = suffix.split('_', maxsplit=1)
+            ell_value = ell_token[1:]
+            return rf'$\ell={ell_value}$ unit vector ({vec_token})'
+
+        for pair_index, (phi_idx, theta_idx) in enumerate(angle_pairs):
+            current_colour = colour_cycle[pair_index % len(colour_cycle)]
+            longitude_deg = full_samples_for_sky[:, phi_idx]
+            latitude_deg = full_samples_for_sky[:, theta_idx]
+
+            probability_map = self._samples_to_healpy_map(
+                longitude_deg,
+                latitude_deg,
+                lonlat=True,
+                smooth=smooth,
+                nside=nside
+            )
+
+            phi, theta, projected_map = hp.projview(
+                probability_map,
+                return_only_data=True,
+                xsize=xsize
+            )
+
+            # NOTE: the projected map will have more bins therefore will not sum to
+            # one; it also has -infs; remove these and renormalise
+            projected_map[projected_map == -np.inf] = 0
+            projected_map /= np.sum(projected_map)
+            probability_contours = self._compute_2D_contours(
+                projected_map,
+                contour_levels
+            )
+
+            phi_grid, theta_grid = np.meshgrid(phi, theta)
+            transparent_cmap = self._make_transparent_colour_map(current_colour)
+
+            plt.contourf(
+                phi_grid,
+                theta_grid,
+                projected_map,
+                levels=probability_contours,
+                cmap=transparent_cmap,
+                zorder=1,
+                extend='both'
+            )
+            plt.contour(
+                phi_grid,
+                theta_grid,
+                projected_map,
+                levels=probability_contours,
+                colors=[matplotlib.colors.to_rgba(current_colour)], # type: ignore
+                zorder=1,
+                extend='both',
+            )
+            plt.pcolormesh(
+                phi_grid,
+                theta_grid,
+                projected_map,
+                cmap=transparent_cmap,
+                rasterized=rasterize_probability_mesh,
+            )
+
+            if len(angle_pairs) == 1:
+                descriptor = label if label else _format_angle_descriptor(
+                    self.parameter_names[phi_idx]
+                )
+                pair_label = descriptor
+            else:
+                pair_label = _format_angle_descriptor(self.parameter_names[phi_idx])
+            contour_proxy = Patch(
+                facecolor=matplotlib.colors.to_rgba(current_colour, alpha=0.4),
+                edgecolor=current_colour,
+                linewidth=1,
+                label=pair_label
+            )
             handles.append(contour_proxy)
-            labels.append(label)
-            ax.legend(handles=handles, labels=labels, loc='upper right')
-        else:
-            ax.legend(handles=[contour_proxy], labels=[label], loc='upper right')
+            labels_list.append(pair_label)
+
+        ax.legend(handles=handles, labels=labels_list, loc='upper right')
 
     def _make_transparent_colour_map(self,
                 colour: str
