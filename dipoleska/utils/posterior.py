@@ -650,6 +650,7 @@ function to this method when instantiating from an ultranest run number.'''
 
     def sky_direction_posterior(self,
             coordinates: list[str] | None = None,
+            save_path: str | None = None,
             colour: str = 'tomato',
             colours: Sequence[str] | None = None,
             smooth: None | float = 0.05,
@@ -667,6 +668,8 @@ function to this method when instantiating from an ultranest run number.'''
             the target coordinates. For example, specifying
             `coordinates=['equatorial', 'galactic']` transforms from equatorial
             to galactic.
+        :param save_path: Specify a path to save the corner plot. If None, the
+            plot will not be saved. The default is None.
         :param colour: Legacy single-colour setting used when only one angular
             vector is present; also acts as the first fallback colour.
         :param colours: Optional sequence of colours to cycle through when plotting
