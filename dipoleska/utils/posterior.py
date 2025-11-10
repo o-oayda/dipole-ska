@@ -32,6 +32,14 @@ from pathlib import Path
 
 SUPPORTED_ANGLE_COORDINATES: set[str] = {'galactic', 'equatorial', 'ecliptic'}
 _MULTIPOLE_ANGLE_PATTERN = re.compile(r'^(phi|theta)_(l\d+_\d+)$')
+DEFAULT_PLOT_COLORS: list[str] = [
+    'cornflowerblue',
+    'tomato',
+    'mediumseagreen',
+    'goldenrod',
+    'mediumpurple',
+    'darkcyan'
+]
 
 
 @dataclass
@@ -471,12 +479,53 @@ class PosteriorMixin:
                 default_triangle_options['legend_labels'] = [
                     run_data['name'] for run_data in prepared_runs
                 ]
+            run_colors: list[str] | None = None
+            original_solid_colors = None
+            if len(mc_runs) > 1:
+                solid_colors = list(getattr(plotter.settings, 'solid_colors', []))
+                if not solid_colors:
+                    solid_colors = list(DEFAULT_PLOT_COLORS)
+                run_colors = []
+                idx = 0
+                while len(run_colors) < len(mc_runs):
+                    run_colors.append(solid_colors[idx % len(solid_colors)])
+                    idx += 1
+                if hasattr(plotter.settings, 'solid_colors'):
+                    original_solid_colors = list(plotter.settings.solid_colors)
+                    new_colors = list(run_colors)
+                    if len(original_solid_colors) > len(run_colors):
+                        new_colors.extend(original_solid_colors[len(run_colors):])
+                    plotter.settings.solid_colors = new_colors
 
-            plotter.triangle_plot(
-                mc_runs,
-                params=sanitized_names,
-                **default_triangle_options
-            )
+            try:
+                plotter.triangle_plot(
+                    mc_runs,
+                    params=sanitized_names,
+                    **default_triangle_options
+                )
+            finally:
+                if original_solid_colors is not None:
+                    plotter.settings.solid_colors = original_solid_colors
+
+            if len(mc_runs) > 1 and run_colors is not None:
+                # GetDist draws datasets in reverse order for layering, so the colours
+                # applied to each run are reversed relative to the input order.
+                annotation_colors = list(run_colors[:len(mc_runs)][::-1])
+                run_specs = [
+                    {
+                        'name': run_data['name'],
+                        'samples': run_data['samples'],
+                        'weights': run_data['weights']
+                    }
+                    for run_data in prepared_runs
+                ]
+                paperplot_style.PaperPlotter.annotate_multi_run_intervals(
+                    plotter,
+                    sanitized_names,
+                    latex_labels,
+                    run_specs,
+                    annotation_colors
+                )
 
             if save_path is not None:
                 output_dir = os.path.dirname(save_path)
@@ -659,13 +708,8 @@ function to this method when instantiating from an ultranest run number.'''
             run_descriptors.append((comparison_run.name, comparison_samples))
 
         total_pairs = len(angle_pairs) * len(run_descriptors)
-        default_palette = [
-            colour,
-            'cornflowerblue',
-            'mediumseagreen',
-            'goldenrod',
-            'mediumpurple',
-            'darkcyan'
+        default_palette = [colour] + [
+            c for c in DEFAULT_PLOT_COLORS if c != colour
         ]
         if colours is not None:
             colour_cycle = list(colours)
@@ -794,7 +838,7 @@ function to this method when instantiating from an ultranest run number.'''
                 labels_list.append(pair_label)
 
         ax.legend(handles=handles, labels=labels_list, loc='upper right')
-
+    
     def _make_transparent_colour_map(self,
                 colour: str
         ) -> LinearSegmentedColormap:

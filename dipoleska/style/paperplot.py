@@ -183,6 +183,80 @@ class PaperPlotter(plots.GetDistPlotter):
 
         return result
 
+    def annotate_multi_run_intervals(
+            self,
+            params: list[str],
+            latex_labels: list[str],
+            runs: list[dict[str, np.ndarray]],
+            colours: list[str]
+        ) -> None:
+        '''
+        After plotting multiple runs in a single triangle plot, annotate each 1D
+        marginal with per-run credible intervals stacked vertically. `runs` is a
+        list of dictionaries with keys `name`, `samples`, and optional `weights`.
+        '''
+        if len(runs) <= 1:
+            return
+        subplots = getattr(self, 'subplots', None)
+        if subplots is None:
+            return
+        try:
+            diag_axes = np.diag(np.asarray(subplots, dtype=object)).tolist()
+        except Exception:
+            diag_axes = []
+            grid = np.asarray(subplots, dtype=object)
+            for idx in range(min(len(params), grid.shape[0])):
+                diag_axes.append(grid[idx, idx])
+        if not diag_axes:
+            return
+
+        quantiles = [0.158655254, 0.5, 0.841344746]
+        interval_cache: list[list[tuple[float, float, float]]] = []
+
+        for run in runs:
+            samples = np.asarray(run['samples'], dtype=np.float64)
+            weights = run.get('weights')
+            run_intervals: list[tuple[float, float, float]] = []
+            for idx in range(len(params)):
+                q = self._weighted_quantiles(samples[:, idx], weights, quantiles)
+                run_intervals.append(tuple(q))
+            interval_cache.append(run_intervals)
+
+        fontsize = self._scaled_fontsize(
+            self.settings.title_limit_fontsize,
+            self.settings.axes_fontsize
+        )
+        base_y = 1.03
+        line_height = 0.15
+        text_x = 0.05
+
+        for param_idx, ax in enumerate(diag_axes):
+            if ax is None:
+                continue
+            label = latex_labels[param_idx] if param_idx < len(latex_labels) else params[param_idx]
+            ax.set_title('')
+            for run_idx, run in enumerate(runs):
+                q_lower, q_median, q_upper = interval_cache[run_idx][param_idx]
+                if not (
+                    np.isfinite(q_lower)
+                    and np.isfinite(q_median)
+                    and np.isfinite(q_upper)
+                ):
+                    continue
+                interval_str = self._format_interval(q_median, q_lower, q_upper)
+                y_position = base_y + run_idx * line_height
+                color = colours[run_idx % len(colours)]
+                ax.text(
+                    text_x,
+                    y_position,
+                    rf'${label} = {interval_str}$',
+                    color=color,
+                    ha='left',
+                    va='bottom',
+                    transform=ax.transAxes,
+                    fontsize=fontsize
+                )
+
 
 style_name = "paperplot"
 
