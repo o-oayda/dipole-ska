@@ -58,8 +58,8 @@ class MapLoader:
 class MapCollectionLoader:
     def __init__(self,
                  snr_cut: Literal[5,10],
-                 lower_flux_limit: Literal["5e-5", "1e-4", "5e-4", "1e-3"],
-                 lower_z_limit: Literal["0", "0.5"],
+                 lower_flux_limit: Literal['5e-5', '1e-4', '5e-4', '1e-3'],
+                 lower_z_limit: Literal['0', '0.5'],
                  gal_cut: Literal[0,5,10],
                  map_types: List[Literal['counts','rms','alpha','redshift', 
                                          'flux','info']],
@@ -77,14 +77,16 @@ class MapCollectionLoader:
         
         self._map_collections: dict[str, Any] = {}
         self.snr_cut = snr_cut
-        self.lower_flux_limit = lower_flux_limit
-        self.lower_z_limit = lower_z_limit
+        self.lower_flux_limit = float(lower_flux_limit)
+        self.lower_z_limit = float(lower_z_limit)
         self.gal_cut = gal_cut
         self.nside = nside
+        self.upper_z_limit = float("5.0")
         self.path_to_files = 'data/ska/mapcollections/'
+        self.map_types = map_types
         self.file_configuration = (
-            f'_nside{nside}_flux{lower_flux_limit}_snr{snr_cut}'
-            f'_z{lower_z_limit}_z{gal_cut}'
+            f'_nside{self.nside}_flux{self.lower_flux_limit}_snr{self.snr_cut}'
+            f'_z{self.lower_z_limit}_z{self.upper_z_limit}_gal{self.gal_cut}'
         )
         self.map_dict = {
                         'counts': ('countmap', '.fits'),
@@ -105,18 +107,18 @@ class MapCollectionLoader:
         
         :return: Dictionary of loaded maps.
         '''
+        
+    
         if self._map_collections:
             return self._map_collections
 
-        types = getattr(self, "map_types", list(self.map_dict.keys()))
-        for map_type in types:
+        for map_type in self.map_types:
             if map_type not in self.map_dict:
                 raise ValueError(f"Unknown map type: {map_type}")
 
             base_name, ext = self.map_dict[map_type]
-            file_path = (
-                f"{self.path_to_files}{base_name}{self.file_configuration}{ext}"
-                        )
+            file_path = (f"{self.path_to_files}{base_name}"
+                        f"{self.file_configuration}{ext}")
 
             try:
                 print(f"Reading in {file_path}...")
@@ -127,7 +129,8 @@ class MapCollectionLoader:
                 self._map_collections[map_type] = data
             except Exception as e:
                 raise Exception(
-                f"Cannot read file for map type '{map_type}'. Path: {file_path}"
+                    f"Cannot read file for map type '{map_type}'."
+                    f" Path: {file_path}"
                 ) from e
 
         return self._map_collections
