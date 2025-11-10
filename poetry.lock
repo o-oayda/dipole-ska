@@ -393,6 +393,30 @@ unicode = ["unicodedata2 (>=15.1.0) ; python_version <= \"3.12\""]
 woff = ["brotli (>=1.0.1) ; platform_python_implementation == \"CPython\"", "brotlicffi (>=0.8.0) ; platform_python_implementation != \"CPython\"", "zopfli (>=0.1.4)"]
 
 [[package]]
+name = "getdist"
+version = "1.7.4"
+description = "GetDist Monte Carlo sample analysis, plotting and GUI"
+optional = false
+python-versions = ">=3.10.0"
+groups = ["main"]
+files = [
+    {file = "getdist-1.7.4-py3-none-any.whl", hash = "sha256:5b31142794a1ecba6b9081153648a274a6cdf3e860d816bde882e228c823649b"},
+    {file = "getdist-1.7.4.tar.gz", hash = "sha256:1bd69c9748891fa1dc516e2474b30b3afa083d2975531c09c4377ae30e8636ac"},
+]
+
+[package.dependencies]
+matplotlib = ">=2.2.0,<3.5.0 || >3.5.0"
+numpy = ">=1.23.0"
+packaging = ">=24"
+PyYAML = ">=5.1"
+scipy = ">=1.5"
+
+[package.extras]
+docs = ["jupytext", "sphinx", "sphinx_markdown_builder", "sphinx_rtd_theme (>=1.0)", "sphinxcontrib-jquery"]
+gui = ["PySide6 (>=6.1)"]
+streamlitgui = ["streamlit (>=1.24.0)"]
+
+[[package]]
 name = "h5py"
 version = "3.13.0"
 description = "Read and write HDF5 files from Python"
@@ -466,6 +490,18 @@ numpy = ">=1.19"
 all = ["matplotlib", "scipy"]
 doc = ["ipykernel", "matplotlib", "nbsphinx", "numpydoc", "scipy"]
 test = ["matplotlib", "pytest", "pytest-astropy-header", "pytest-cython", "pytest-doctestplus", "requests", "scipy"]
+
+[[package]]
+name = "iniconfig"
+version = "2.3.0"
+description = "brain-dead simple config-ini parsing"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "iniconfig-2.3.0-py3-none-any.whl", hash = "sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12"},
+    {file = "iniconfig-2.3.0.tar.gz", hash = "sha256:c76315c77db068650d49c5b56314774a7804df16fee4402c1f19d6d15d8c4730"},
+]
 
 [[package]]
 name = "ipython"
@@ -932,6 +968,22 @@ typing = ["typing-extensions ; python_version < \"3.10\""]
 xmp = ["defusedxml"]
 
 [[package]]
+name = "pluggy"
+version = "1.6.0"
+description = "plugin and hook calling mechanisms for python"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746"},
+    {file = "pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3"},
+]
+
+[package.extras]
+dev = ["pre-commit", "tox"]
+testing = ["coverage", "pytest", "pytest-benchmark"]
+
+[[package]]
 name = "prompt-toolkit"
 version = "3.0.51"
 description = "Library for building powerful interactive command lines in Python"
@@ -1031,6 +1083,28 @@ files = [
 
 [package.extras]
 diagrams = ["jinja2", "railroad-diagrams"]
+
+[[package]]
+name = "pytest"
+version = "9.0.0"
+description = "pytest: simple powerful testing with Python"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "pytest-9.0.0-py3-none-any.whl", hash = "sha256:e5ccdf10b0bac554970ee88fc1a4ad0ee5d221f8ef22321f9b7e4584e19d7f96"},
+    {file = "pytest-9.0.0.tar.gz", hash = "sha256:8f44522eafe4137b0f35c9ce3072931a788a21ee40a2ed279e817d3cc16ed21e"},
+]
+
+[package.dependencies]
+colorama = {version = ">=0.4", markers = "sys_platform == \"win32\""}
+iniconfig = ">=1.0.1"
+packaging = ">=22"
+pluggy = ">=1.5,<2"
+pygments = ">=2.7.2"
+
+[package.extras]
+dev = ["argcomplete", "attrs (>=19.2)", "hypothesis (>=3.56)", "mock", "requests", "setuptools", "xmlschema"]
 
 [[package]]
 name = "python-dateutil"
@@ -1288,4 +1362,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12"
-content-hash = "f5cdde1ca6935d4e92448689aeb8e343c4e4b3fd4d1a2c2d20c72cb48ea888e7"
+content-hash = "4a6ed594263713ff9badfc14d84555fc1ad0128f271b63bbdfdaad647a0aba60"
