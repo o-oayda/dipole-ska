@@ -62,7 +62,7 @@ class MapCollectionLoader:
                  lower_z_limit: Literal['0', '0.5'],
                  gal_cut: Literal[0,5,10],
                  map_types: List[Literal['counts','rms','alpha','redshift', 
-                                         'flux','info']],
+                                         'flux','info','all']],
                  nside: int = 64
                  ) -> None:
         '''
@@ -73,6 +73,9 @@ class MapCollectionLoader:
         :param lower_z_limit: Lower redshift limit to apply when loading maps.
         :param gal_cut: Galactic cut to apply when loading maps.
         :param nside: Healpy nside parameter for the maps.
+        :param map_types: Specify which maps to load in the collections dict.
+            If 'all' is passed in the list, the final map_collections dict
+            will contain all available data types.
         '''
         
         self._map_collections: dict[str, Any] = {}
@@ -83,7 +86,6 @@ class MapCollectionLoader:
         self.nside = nside
         self.upper_z_limit = float("5.0")
         self.path_to_files = 'data/ska/mapcollections/'
-        self.map_types = map_types
         self.file_configuration = (
             f'_nside{self.nside}_flux{self.lower_flux_limit}_snr{self.snr_cut}'
             f'_z{self.lower_z_limit}_z{self.upper_z_limit}_gal{self.gal_cut}.0'
@@ -96,6 +98,10 @@ class MapCollectionLoader:
                         'flux': ('fluxhist', '.txt'),
                         'info': ('xa', '.txt')
                         }
+        if 'all' in map_types:
+            self.map_types = self.map_dict.keys()
+        else:
+            self.map_types = map_types
 
     @property
     def map_collections(self
