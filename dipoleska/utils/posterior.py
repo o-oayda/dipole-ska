@@ -5,6 +5,8 @@ import matplotlib
 from matplotlib.colors import LinearSegmentedColormap
 import os
 import re
+import warnings
+from dataclasses import dataclass
 
 from ultranest.utils import resample_equal
 from dipoleska.utils.physics import (
@@ -30,6 +32,24 @@ from pathlib import Path
 
 SUPPORTED_ANGLE_COORDINATES: set[str] = {'galactic', 'equatorial', 'ecliptic'}
 _MULTIPOLE_ANGLE_PATTERN = re.compile(r'^(phi|theta)_(l\d+_\d+)$')
+DEFAULT_PLOT_COLORS: list[str] = [
+    'cornflowerblue',
+    'tomato',
+    'mediumseagreen',
+    'goldenrod',
+    'mediumpurple',
+    'darkcyan'
+]
+
+
+@dataclass
+class PosteriorRun:
+    '''For use when plotting multiple runs on the same corner.'''
+    name: str
+    samples: NDArray[np.float64]
+    weighted_samples: NDArray[np.float64]
+    weights: NDArray[np.float64] | None
+    parameter_names: list[str]
 
 
 class PosteriorMixin:
@@ -68,6 +88,47 @@ class PosteriorMixin:
     @property
     def weights(self) -> NDArray[np.float64] | None:
         return getattr(self, '_weights', None)
+
+    def _get_comparison_runs(self) -> list[PosteriorRun]:
+        runs = getattr(self, '_comparison_runs', None)
+        if runs is None:
+            runs = []
+            setattr(self, '_comparison_runs', runs)
+        return runs
+
+    @property
+    def comparison_runs(self) -> list[PosteriorRun]:
+        return list(self._get_comparison_runs())
+
+    def clear_comparison_runs(self) -> None:
+        setattr(self, '_comparison_runs', [])
+
+    def add_comparison_run(
+            self,
+            run: 'PosteriorMixin',
+            name: str | None = None
+        ) -> None:
+        '''
+        Register another Posterior instance whose samples should be overplotted
+        alongside this Posterior when producing diagnostic plots. At the moment
+        this will only work for the getdist backend of the corner plot.
+
+        :param name: Optional name to give to the additional posterior instance.
+        '''
+        if run.parameter_names != self.parameter_names:
+            raise ValueError(
+                'Comparison run parameter names must match the base posterior.'
+            )
+
+        run_name = name or getattr(run, 'name', run.__class__.__name__)
+        comparison_entry = PosteriorRun(
+            name=run_name,
+            samples=np.asarray(run.samples, dtype=np.float64),
+            weighted_samples=np.asarray(run.weighted_samples, dtype=np.float64),
+            weights=None if run.weights is None else np.asarray(run.weights, dtype=np.float64),
+            parameter_names=list(run.parameter_names)
+        )
+        self._get_comparison_runs().append(comparison_entry)
 
     @staticmethod
     def _normalise_coordinates_argument(
@@ -235,20 +296,66 @@ class PosteriorMixin:
         '''
         if backend == 'corner':
             base_samples = np.asarray(self.samples, dtype=np.float64)
+            base_weights = None
         else:
             base_samples = np.asarray(self.weighted_samples, dtype=np.float64)
+            base_weights = (
+                None if self.weights is None
+                else np.asarray(self.weights, dtype=np.float64)
+            )
 
         normalised_coordinates = self._normalise_coordinates_argument(coordinates)
 
-        if normalised_coordinates is not None:
-            samples_for_corner = self._convert_samples(
-                base_samples,
-                normalised_coordinates
-            )
-        else:
-            samples_for_corner = base_samples.copy()
+        primary_label = getattr(self, 'name', self.__class__.__name__)
+        run_descriptors: list[dict[str, Any]] = [{
+            'name': primary_label,
+            'raw_samples': base_samples,
+            'weights': base_weights
+        }]
 
-        self.samples_for_corner = samples_for_corner
+        # if no extra runs have been provided, we just get a single set of samples
+        # plotted on the corner as expeced
+        for comparison_run in self.comparison_runs:
+            raw_samples = (
+                comparison_run.samples
+                if backend == 'corner'
+                else comparison_run.weighted_samples
+            )
+            if raw_samples is None:
+                continue
+            run_descriptors.append({
+                'name': comparison_run.name,
+                'raw_samples': np.asarray(raw_samples, dtype=np.float64),
+                'weights': (
+                    None if backend == 'corner'
+                    else (
+                        None if comparison_run.weights is None
+                        else np.asarray(comparison_run.weights, dtype=np.float64)
+                    )
+                )
+            })
+
+        prepared_runs: list[dict[str, Any]] = []
+        for descriptor in run_descriptors:
+            raw_samples = descriptor['raw_samples']
+            if normalised_coordinates is not None:
+                converted_samples = self._convert_samples(
+                    raw_samples,
+                    normalised_coordinates
+                )
+            else:
+                converted_samples = raw_samples.copy()
+            prepared_runs.append({
+                'name': descriptor['name'],
+                'samples': converted_samples,
+                'weights': descriptor['weights']
+            })
+
+        if not prepared_runs:
+            raise ValueError('No valid sample sets available for plotting.')
+
+        self.samples_for_corner = prepared_runs[0]['samples']
+        samples_for_corner = prepared_runs[0]['samples']
 
         # determine if we need to override angular labels after a rotation
         target_coordinate: str | None = None
@@ -295,6 +402,14 @@ class PosteriorMixin:
             corner_labels.append(f'${latex_label}$')
 
         if backend == 'corner':
+            if len(prepared_runs) > 1:
+                warnings.warn(
+                    'Comparison runs are only supported with the getdist backend. '
+                    'Falling back to plotting the primary run only.',
+                    UserWarning,
+                    stacklevel=2
+                )
+
             with matplotlib_latex():
                 corner(
                     samples_for_corner,
@@ -317,15 +432,13 @@ class PosteriorMixin:
                         dpi=300
                     )
         else:
-            # Create a GetDist sample container for plotting with the paperplot style.
-            samples_array = np.asarray(samples_for_corner, dtype=np.float64)
+            # Create GetDist sample containers for each run.
+            reference_array = np.asarray(samples_for_corner, dtype=np.float64)
 
-            # for longitude-like parameters, assume they have 'phi' in the name
-            # and make sure getdist is aware of their periodicity
             periodic_ranges: dict[str, list[float | bool]] = {}
             for idx, sanitized_name in enumerate(sanitized_names):
                 if 'phi' in sanitized_name.lower():
-                    param_values = samples_array[:, idx]
+                    param_values = reference_array[:, idx]
                     max_val = float(np.max(param_values))
 
                     if normalised_coordinates is not None:
@@ -340,15 +453,19 @@ class PosteriorMixin:
                         f'to periodic {periodic_ranges[sanitized_name]}.'
                     )
 
-            mc_samples = MCSamples(
-                samples=samples_array,
-                weights=self.weights,
-                names=sanitized_names,
-                labels=latex_labels,
-                sampler='nested',
-                ranges=periodic_ranges if periodic_ranges else None
-            )
-            mc_samples.updateSettings({'ignore_limits': True})
+            mc_runs: list[MCSamples] = []
+            for run_data in prepared_runs:
+                samples_array = np.asarray(run_data['samples'], dtype=np.float64)
+                mc = MCSamples(
+                    samples=samples_array,
+                    weights=run_data['weights'],
+                    names=sanitized_names,
+                    labels=latex_labels,
+                    sampler='nested',
+                    ranges=periodic_ranges if periodic_ranges else None
+                )
+                mc.updateSettings({'ignore_limits': True})
+                mc_runs.append(mc)
 
             plotter = plots.get_subplot_plotter(style=paperplot_style.style_name)
 
@@ -358,11 +475,57 @@ class PosteriorMixin:
             }
             default_triangle_options.update(kwargs)
 
-            plotter.triangle_plot(
-                [mc_samples],
-                params=sanitized_names,
-                **default_triangle_options
-            )
+            if (len(mc_runs) > 1) and ('legend_labels' not in kwargs):
+                default_triangle_options['legend_labels'] = [
+                    run_data['name'] for run_data in prepared_runs
+                ]
+            run_colors: list[str] | None = None
+            original_solid_colors = None
+            if len(mc_runs) > 1:
+                solid_colors = list(getattr(plotter.settings, 'solid_colors', []))
+                if not solid_colors:
+                    solid_colors = list(DEFAULT_PLOT_COLORS)
+                run_colors = []
+                idx = 0
+                while len(run_colors) < len(mc_runs):
+                    run_colors.append(solid_colors[idx % len(solid_colors)])
+                    idx += 1
+                if hasattr(plotter.settings, 'solid_colors'):
+                    original_solid_colors = list(plotter.settings.solid_colors)
+                    new_colors = list(run_colors)
+                    if len(original_solid_colors) > len(run_colors):
+                        new_colors.extend(original_solid_colors[len(run_colors):])
+                    plotter.settings.solid_colors = new_colors
+
+            try:
+                plotter.triangle_plot(
+                    mc_runs,
+                    params=sanitized_names,
+                    **default_triangle_options
+                )
+            finally:
+                if original_solid_colors is not None:
+                    plotter.settings.solid_colors = original_solid_colors
+
+            if len(mc_runs) > 1 and run_colors is not None:
+                # GetDist draws datasets in reverse order for layering, so the colours
+                # applied to each run are reversed relative to the input order.
+                annotation_colors = list(run_colors[:len(mc_runs)][::-1])
+                run_specs = [
+                    {
+                        'name': run_data['name'],
+                        'samples': run_data['samples'],
+                        'weights': run_data['weights']
+                    }
+                    for run_data in prepared_runs
+                ]
+                paperplot_style.PaperPlotter.annotate_multi_run_intervals(
+                    plotter,
+                    sanitized_names,
+                    latex_labels,
+                    run_specs,
+                    annotation_colors
+                )
 
             if save_path is not None:
                 output_dir = os.path.dirname(save_path)
@@ -532,17 +695,24 @@ function to this method when instantiating from an ultranest run number.'''
         if not angle_pairs:
             raise ValueError('No angular parameter pairs were found to plot.')
 
-        base_samples = np.asarray(self.samples, dtype=np.float64)
-        full_samples_for_sky = self._convert_samples(base_samples, coordinates)
+        normalised_coordinates = self._normalise_coordinates_argument(coordinates)
 
-        # build colour cycle ensuring at least as many distinct colours as pairs
-        default_palette = [
-            colour,
-            'cornflowerblue',
-            'mediumseagreen',
-            'goldenrod',
-            'mediumpurple',
-            'darkcyan'
+        base_samples = np.asarray(self.samples, dtype=np.float64)
+        full_samples_for_sky = self._convert_samples(base_samples, normalised_coordinates)
+
+        run_descriptors: list[tuple[str, NDArray[np.float64]]] = [
+            (getattr(self, 'name', 'Primary'), full_samples_for_sky)
+        ]
+        for comparison_run in self.comparison_runs:
+            comparison_samples = self._convert_samples(
+                comparison_run.samples,
+                normalised_coordinates
+            )
+            run_descriptors.append((comparison_run.name, comparison_samples))
+
+        total_pairs = len(angle_pairs) * len(run_descriptors)
+        default_palette = [colour] + [
+            c for c in DEFAULT_PLOT_COLORS if c != colour
         ]
         if colours is not None:
             colour_cycle = list(colours)
@@ -550,10 +720,8 @@ function to this method when instantiating from an ultranest run number.'''
                 colour_cycle = default_palette.copy()
         else:
             colour_cycle = default_palette.copy()
-
-        # extend palette to cover all pairs without reusing the same colour immediately
         idx = 0
-        while len(colour_cycle) < len(angle_pairs):
+        while len(colour_cycle) < total_pairs:
             colour_cycle.append(default_palette[idx % len(default_palette)])
             idx += 1
 
@@ -586,93 +754,94 @@ function to this method when instantiating from an ultranest run number.'''
             to which unit vector.'''
             match = _MULTIPOLE_ANGLE_PATTERN.match(param_name)
             if not match:
+                if param_name == 'phi' or param_name == 'theta':
+                    return 'dipole vector'
                 return param_name
             suffix = match.group(2)
             ell_token, vec_token = suffix.split('_', maxsplit=1)
             ell_value = ell_token[1:]
-            return rf'$\ell={ell_value}$ unit vector ({vec_token})'
+            return rf'$\ell={ell_value}$ vector ({vec_token})'
 
-        for pair_index, (phi_idx, theta_idx) in enumerate(angle_pairs):
-            current_colour = colour_cycle[pair_index % len(colour_cycle)]
-            longitude_deg = full_samples_for_sky[:, phi_idx]
-            latitude_deg = full_samples_for_sky[:, theta_idx]
+        colour_index = 0
+        for run_name, samples_for_sky in run_descriptors:
+            for pair_index, (phi_idx, theta_idx) in enumerate(angle_pairs):
+                current_colour = colour_cycle[colour_index % len(colour_cycle)]
+                colour_index += 1
+                longitude_deg = samples_for_sky[:, phi_idx]
+                latitude_deg = samples_for_sky[:, theta_idx]
 
-            probability_map = self._samples_to_healpy_map(
-                longitude_deg,
-                latitude_deg,
-                lonlat=True,
-                smooth=smooth,
-                nside=nside
-            )
-
-            phi, theta, projected_map = hp.projview(
-                probability_map,
-                return_only_data=True,
-                xsize=xsize
-            )
-
-            # NOTE: the projected map will have more bins therefore will not sum to
-            # one; it also has -infs; remove these and renormalise
-            projected_map[projected_map == -np.inf] = 0
-            projected_map /= np.sum(projected_map)
-            probability_contours = self._compute_2D_contours(
-                projected_map,
-                contour_levels
-            )
-
-            phi_grid, theta_grid = np.meshgrid(phi, theta)
-            transparent_cmap = self._make_transparent_colour_map(current_colour)
-
-            plt.contourf(
-                phi_grid,
-                theta_grid,
-                projected_map,
-                levels=probability_contours,
-                cmap=transparent_cmap,
-                zorder=1,
-                extend='both'
-            )
-            plt.contour(
-                phi_grid,
-                theta_grid,
-                projected_map,
-                levels=probability_contours,
-                colors=[matplotlib.colors.to_rgba(current_colour)], # type: ignore
-                zorder=1,
-                extend='both',
-            )
-            plt.pcolormesh(
-                phi_grid,
-                theta_grid,
-                projected_map,
-                cmap=transparent_cmap,
-                rasterized=rasterize_probability_mesh,
-            )
-
-            if len(angle_pairs) == 1:
-                descriptor = label if label else _format_angle_descriptor(
-                    self.parameter_names[phi_idx]
+                probability_map = self._samples_to_healpy_map(
+                    longitude_deg,
+                    latitude_deg,
+                    lonlat=True,
+                    smooth=smooth,
+                    nside=nside
                 )
-                pair_label = descriptor
-            else:
-                pair_label = _format_angle_descriptor(self.parameter_names[phi_idx])
-            contour_proxy = Patch(
-                facecolor=matplotlib.colors.to_rgba(current_colour, alpha=0.4),
-                edgecolor=current_colour,
-                linewidth=1,
-                label=pair_label
-            )
-            handles.append(contour_proxy)
-            labels_list.append(pair_label)
+
+                phi, theta, projected_map = hp.projview(
+                    probability_map,
+                    return_only_data=True,
+                    xsize=xsize
+                )
+
+                # NOTE: the projected map will have more bins therefore will not sum to
+                # one; it also has -infs; remove these and renormalise
+                projected_map[projected_map == -np.inf] = 0
+                projected_map /= np.sum(projected_map)
+                probability_contours = self._compute_2D_contours(
+                    projected_map,
+                    contour_levels
+                )
+
+                phi_grid, theta_grid = np.meshgrid(phi, theta)
+                transparent_cmap = self._make_transparent_colour_map(current_colour)
+
+                plt.contourf(
+                    phi_grid,
+                    theta_grid,
+                    projected_map,
+                    levels=probability_contours,
+                    cmap=transparent_cmap,
+                    zorder=1,
+                    extend='both'
+                )
+                plt.contour(
+                    phi_grid,
+                    theta_grid,
+                    projected_map,
+                    levels=probability_contours,
+                    colors=[matplotlib.colors.to_rgba(current_colour)], # type: ignore
+                    zorder=1,
+                    extend='both',
+                )
+                plt.pcolormesh(
+                    phi_grid,
+                    theta_grid,
+                    projected_map,
+                    cmap=transparent_cmap,
+                    rasterized=rasterize_probability_mesh,
+                )
+
+                if len(angle_pairs) == 1 and len(run_descriptors) == 1:
+                    descriptor = label if label else _format_angle_descriptor(
+                        self.parameter_names[phi_idx]
+                    )
+                    pair_label = descriptor
+                else:
+                    descriptor = _format_angle_descriptor(self.parameter_names[phi_idx])
+                    pair_label = f'{run_name} – {descriptor}'
+
+                contour_proxy = Patch(
+                    facecolor=matplotlib.colors.to_rgba(current_colour, alpha=0.4),
+                    edgecolor=current_colour,
+                    linewidth=1,
+                    label=pair_label
+                )
+                handles.append(contour_proxy)
+                labels_list.append(pair_label)
 
         ax.legend(handles=handles, labels=labels_list, loc='upper right')
-        if save_path is not None:
-            plt.savefig(
-                save_path,
-                bbox_inches='tight',
-                dpi=300
-            )
-
+    
     def _make_transparent_colour_map(self,
                 colour: str
         ) -> LinearSegmentedColormap:
@@ -791,16 +960,25 @@ class Posterior(PosteriorMixin):
         self._parameter_names: list[str] = []
         self._weighted_samples: NDArray[np.float64] | None = None
         self._weights: NDArray[np.float64] | None = None
+        self.name = getattr(self, 'name', self.__class__.__name__)
 
         if isinstance(samples, int):
             run_number = samples
             self._load_samples_from_log(run_number)
             self.loaded_from_run = True
+            self.name = f'Run {run_number}'
         
         elif isinstance(samples, str):
             log_dir = samples
             self._load_samples_from_log(log_dir)
             self.loaded_from_run = True
+            path_obj = Path(log_dir)
+            candidate = path_obj.name or str(path_obj)
+            run_match = re.fullmatch(r'run(\d+)', candidate.lower())
+            if run_match:
+                self.name = f'Run {run_match.group(1)}'
+            else:
+                self.name = candidate
 
         elif isinstance(samples, np.ndarray):
             sample_array = np.atleast_2d(np.asarray(samples, dtype=np.float64))

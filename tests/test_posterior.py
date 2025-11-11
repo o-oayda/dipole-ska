@@ -94,3 +94,25 @@ def test_convert_samples_no_angle_parameters_returns_input():
     posterior = DummyPosterior(samples, parameter_names)
     converted = posterior._convert_samples(samples, None)
     np.testing.assert_allclose(converted, samples)
+
+
+def test_add_comparison_run_stores_samples():
+    posterior, base_samples = _build_samples()
+    comparison_samples = base_samples * 0.5
+    comparison = DummyPosterior(comparison_samples, posterior.parameter_names)
+    comparison.name = 'CompRun'
+
+    posterior.add_comparison_run(comparison)
+    runs = posterior.comparison_runs
+
+    assert len(runs) == 1
+    assert runs[0].name == 'CompRun'
+    np.testing.assert_allclose(runs[0].samples, comparison_samples)
+
+
+def test_add_comparison_run_requires_matching_parameters():
+    posterior, base_samples = _build_samples()
+    other = DummyPosterior(base_samples, ['phi', 'theta'])
+
+    with pytest.raises(ValueError):
+        posterior.add_comparison_run(other)
