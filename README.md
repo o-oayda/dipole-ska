@@ -51,3 +51,26 @@ model.corner_plot()
 
 ## Examples
 See `dipoleska/examples/` for scripts showcasing how to use this repo.
+## Testing
+
+Run the default (fast) suite with:
+
+```bash
+pytest
+```
+
+Slow/long integrations are marked with `@pytest.mark.slow` and are skipped by default via `pytest.ini`.
+These are for long tests which involve actually doing nested sampling and checking its accuracy,
+so are excluded from the core set of tests. To include them:
+
+- Only slow tests:
+
+  ```bash
+  pytest -m slow
+  ```
+
+- All tests, including slow ones:
+
+  ```bash
+  pytest -m "slow or not slow"
+  ```

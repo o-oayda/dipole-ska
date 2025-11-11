@@ -1,0 +1,21 @@
+{
+  "map_path": "/Users/ooay3125/Documents/dipole-utils/tests/artifacts/fiducial_map_nside16.npy",
+  "nside": 16,
+  "angles_in_degrees": false,
+  "ells": [
+    1,
+    2
+  ],
+  "poisson_seed": 141,
+  "parameters": {
+    "M0": 500.0,
+    "M1": 0.007,
+    "M2": 0.014,
+    "phi_l1_0": 6.248362670040135,
+    "theta_l1_0": 1.8090237864548322,
+    "phi_l2_0": 5.197124240926078,
+    "theta_l2_0": 0.8304947954621265,
+    "phi_l2_1": 6.131188835231648,
+    "theta_l2_1": 2.578390709654136
+  }
+}
