@@ -44,7 +44,7 @@ class TestMultipoleFiducialIntegration:
         assert density_map.shape[0] == hp.nside2npix(nside)
         assert np.sum(density_map) >= 1_500_000
 
-        model = Multipole(density_map=density_map, ells=ells)
+        model = Multipole(density_map=density_map, ells=[0] + ells)
         log_dir = tmp_path / "ultranest_logs"
         model.run_nested_sampling(
             step=True,
