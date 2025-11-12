@@ -96,18 +96,19 @@ class Prior:
         self.prior_transforms[prior_index] = new_callable
     
     def remove_prior(self,
-            prior_index: int
+            prior_indices: list[int]
     ) -> None:
         '''
-        Remove one of the prior transforms as specified by an index.
+        Remove the prior transforms as specified by their indices.
 
-        :param prior_index: The index of the parameter to change in the
+        :param prior_indices: The indices of the parameters to change in the
             `prior_transforms` list. For example, if the parameters are
-            `['D', 'l', 'b']` and one wants to change 'D', then `prior_index=0`.
+            `['D', 'l', 'b']` and one wants to change 'D', then `prior_indices=[0]`.
         '''
-        self.prior_transforms.pop(prior_index)
-        self.parameter_names.pop(prior_index)
-        self.ndim -= 1
+        for prior_index in prior_indices:
+            self.prior_transforms.pop(prior_index)
+            self.parameter_names.pop(prior_index)
+            self.ndim -= 1
 
     def plot_priors(self) -> None:
         '''

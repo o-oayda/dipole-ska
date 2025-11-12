@@ -5,6 +5,7 @@ from typing import Literal
 from scipy.stats import poisson
 from abc import abstractmethod
 from dipoleska.models.priors import Prior
+from dipoleska.utils.math import rms_power_law_fit
 
 class LikelihoodMixin:
     @property
@@ -99,7 +100,20 @@ class MapModelMixin:
         self._pixel_vectors_masked = self._pixel_vectors[self.boolean_mask]
         x, y, z = self._pixel_vectors[self.boolean_mask].T
         self._pixel_vectors_xyz_masked = [x, y, z]
-
+        
+    def _get_rms_fit_parameters(self,
+            rms_map: NDArray[np.int_ | np.float64]
+            ) -> None:
+        '''
+        Fit the rms map to a power law and store the fit parameters.
+        '''
+        self.rms_map = rms_map
+        self.rms_map_masked = self.rms_map[self.boolean_mask]
+        self.rms_mean_density, self.rms_slope = rms_power_law_fit(
+                                                            self.rms_map_masked,
+                                                        self._density_map_masked
+                                                        )
+        
     def _parse_prior_choice(self,
             default_prior: str,
             prior: Prior | None = None
@@ -126,18 +140,40 @@ class MapModelMixin:
         want the choice of mean density prior to center around the mean density
         itself. This automatically makes that change without needing explicit
         input from the user.
+        
+        Finally, if one chooses the 'poisson_rms' likelihood, we fit for both
+        the mean density and slope of the rms-power-law relation, and update
+        the priors accordingly.
         '''
         self.likelihood = likelihood
 
         if self.likelihood == 'point':
-            self._prior.remove_prior(prior_index=0)
+            self._prior.remove_prior(prior_indices=[0, 1])
         elif self.likelihood == 'poisson':
+            self.prior.remove_prior(prior_indices=[1])
             self._prior.change_prior(
                 prior_index=0,
                 new_prior=[
                     'Uniform',
                     0.75 * self.mean_density,
                     1.25 * self.mean_density
+                ]
+            )
+        elif self.likelihood == 'poisson_rms':
+            self.prior.change_prior(
+                prior_index=0,
+                new_prior=[
+                    'Uniform',
+                    0.75 * self.rms_mean_density,
+                    1.25 * self.rms_mean_density
+                ]
+            )
+            self.prior.change_prior(
+                prior_index=1,
+                new_prior=[
+                    'Uniform',
+                    0.75 * self.rms_slope,
+                    1.25 * self.rms_slope
                 ]
             )
         else:
