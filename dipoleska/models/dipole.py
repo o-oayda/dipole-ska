@@ -11,7 +11,8 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
     def __init__(self,
             density_map: NDArray[np.int_ | np.float64],
             prior: Prior | None = None,
-            likelihood: Literal['point', 'poisson'] = 'point',
+            likelihood: Literal['point', 'poisson', 'poisson_rms'] = 'point',
+            rms_map: NDArray[np.float64] | None = None,
             fixed_dipole: tuple[float, float, float] | None = None
     ):
         '''
@@ -28,12 +29,19 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             Pass either an instance of a Prior object or leave as None.
             
             If no class is specified, the prior uses default dipole priors.
-            These priors are specified in `models/default_priors.py`, with one
-            key exception: if the Poisson likelihood is specified, the
-            prior on the mean count parameter N will be automatically updated
-            to a uniform distribuion 25% either side of the mean of the density
-            map.
-            
+            These priors are specified in `models/default_priors.py`, with the
+            following key exceptions:
+            - if the Poisson likelihood is specified, the prior on the mean count
+            parameter N will be automatically updated to a uniform distribution
+            25% either side of the mean of the density map.
+            - if the Poisson-RMS likelihood is specified, the prior will be
+            updated to include both the mean count parameter N (with
+            a uniform distribution 25% either side of the mean) and the
+            RMS slope parameter (with a uniform distribution 25% either 
+            side of the mean).
+            If using a custom prior, the rms_slope parameter should appear at
+            index 1 for now.
+
             In addition, if one specifies the point-by-point likelihood,
             the mean count parameter N is removed from the prior distribution
             and the dimensionality of the model is therefore reduced by 1.
@@ -42,9 +50,15 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             
             - `'poisson'` for the Poisson-based likelihood, or;
             - `'point'` for the point-by-point likelihood.
-            
+            - `'poisson_rms'` for the Poisson-based likelihood with 
+                RMS augmentation.
             As mentioned above, this choice will dynamically change the model
             dimensionality and the prior distributions.
+        :param rms_map:
+            RMS pointings map of shape (n_pix,). Required if the `poisson_rms` 
+            likelihood is specified. Masked pixels (if any) should be filled 
+            with np.nan, which are then automatically masked for the likelihood 
+            evaluation.
         :param fixed_dipole: Specify a tuple containing a dipole amplitude,
             longitude in radians and colatitude in radians in order. The model
             then fits the sum of two dipoles: this specified (fixed) dipole
@@ -52,6 +66,7 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         '''
         self._get_healpy_map_attributes(density_map)
         self._parse_prior_choice(default_prior='dipole', prior=prior)
+        self._get_rms_fit_parameters(rms_map) 
         self._parse_likelihood_choice(likelihood)
         self._parameter_names = self.prior.parameter_names
         self.ndim = self.prior.ndim
@@ -67,6 +82,17 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         unmasked pixels for inference.
         '''
         return self._density_map[self.boolean_mask]
+    
+    @property
+    def rms_map(self) -> NDArray[np.int_ | np.float64] | None:
+        '''
+        Whenever the model calls the `rms_map` attribute, provide only the
+        unmasked pixels for inference.
+        '''
+        if self._rms_map is None:
+            return
+        else:
+            return self._rms_map[self.boolean_mask]
     
     @property
     def pixel_vectors(self) -> NDArray[np.float64]:
@@ -101,10 +127,14 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
                 multipole_signal=dipole_term,
                 density_map=self.density_map
             )
-        else:
+        if self.likelihood in ['poisson', 'poisson_rms']:
             return self.poisson_log_likelihood(
                 rate_parameter=dipole_term,
                 density_map=self.density_map
+            )
+        else:
+            raise ValueError(
+                f'Likelihood not recognised {self.likelihood}'
             )
 
     def model(self,
@@ -144,6 +174,28 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
 
         if self.likelihood == 'point':
             return 1 + dipole_signal
-        else:
+
+        elif self.likelihood == 'poisson':
             mean_count = Theta[:, 0]
             return mean_count * (1 + dipole_signal)
+
+        elif self.likelihood == 'poisson_rms':
+            mean_count = Theta[:, 0]
+            rms_slope = Theta[:, 1]
+            
+            # (n_pix, )
+            assert self.rms_map is not None
+            rms_ratio = self.rms_map/self.rms_ref
+            
+            # (n_pix, 1) * (1, n_live) --> (n_pix, n_live)
+            rms_scaling = rms_ratio[:, None] ** (-rms_slope[None, :])
+
+            # (1, n_live) * (n_pix, n_live) * (n_pix, n_live )--> (n_pix, n_live)
+            model_map = mean_count[None, :] * rms_scaling * (1 + dipole_signal)
+            return model_map
+        
+        else:
+            raise ValueError(
+                f'Likelihood not recognised {self.likelihood}'
+            )
+
