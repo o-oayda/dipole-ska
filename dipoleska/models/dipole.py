@@ -64,6 +64,7 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         '''
         self._get_healpy_map_attributes(density_map)
         self._parse_prior_choice(default_prior='dipole', prior=prior)
+        self._get_rms_fit_parameters(rms_map) 
         self._parse_likelihood_choice(likelihood)
         self._parameter_names = self.prior.parameter_names
         self.ndim = self.prior.ndim
@@ -72,7 +73,10 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         else:
             self.fixed_dipole = None
         if self.likelihood == 'poisson_rms':
-            self.rms_map = rms_map
+            if rms_map is None:
+                raise ValueError(
+                    "rms_map is required when using 'poisson_rms' likelihood")
+            self._rms_map = rms_map
             self.rms_ref = np.nanmedian(rms_map)
 
     @property
@@ -175,10 +179,10 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             rms_slope = Theta[:, 1]
             
             # (n_pix, )
-            rms_ratio = self.rms_map/np.nanmedian(self.rms_map)
+            rms_ratio = self.rms_map/self.rms_ref
             
             # (n_pix, 1) * (1, n_live) --> (n_pix, n_live)
-            rms_scaling = rms_ratio[:, None] ** rms_slope[None, :]
+            rms_scaling = rms_ratio[:, None] ** (-rms_slope[None, :])
 
             # (1, n_live) * (n_pix, n_live) * (n_pix, n_live )--> (n_pix, n_live)
             model_map = mean_count[None, :] * rms_scaling * (1 + dipole_signal)

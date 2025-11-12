@@ -105,7 +105,7 @@ class Prior:
             `prior_transforms` list. For example, if the parameters are
             `['D', 'l', 'b']` and one wants to change 'D', then `prior_indices=[0]`.
         '''
-        for prior_index in prior_indices:
+        for prior_index in sorted(prior_indices, reverse=True):
             self.prior_transforms.pop(prior_index)
             self.parameter_names.pop(prior_index)
             self.ndim -= 1

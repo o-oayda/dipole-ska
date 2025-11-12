@@ -386,10 +386,13 @@ def rms_power_law_fit(rms_map: NDArray[np.float64],
                       density_map: NDArray[np.float64],
                       ) -> tuple[float, float]:
     '''
-    Fit a function of the form mean_density*(rms/median(rms))^slope to the 
+    Fit a function of the form mean_density*(rms/median(rms))^-slope to the 
     density map using scipy's curve_fit.
     '''
     power_law = lambda x, a, b: a*x**(-b)
     rms_median = np.nanmedian(rms_map)
-    popt, _ = curve_fit(power_law, rms_map/rms_median, density_map)
-    return popt[0], popt[1]
+    try:
+        popt, _ = curve_fit(power_law, rms_map/rms_median, density_map)
+        return popt[0], popt[1]
+    except RuntimeError as e:
+        raise ValueError(f"Failed to fit RMS power law: {e}")

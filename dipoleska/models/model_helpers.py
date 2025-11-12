@@ -107,10 +107,10 @@ class MapModelMixin:
         '''
         Fit the rms map to a power law and store the fit parameters.
         '''
-        self.rms_map = rms_map
-        self.rms_map_masked = self.rms_map[self.boolean_mask]
+        self._rms_map = rms_map
+        self._rms_map_masked = self._rms_map[self.boolean_mask]
         self.rms_mean_density, self.rms_slope = rms_power_law_fit(
-                                                            self.rms_map_masked,
+                                                            self._rms_map_masked,
                                                         self._density_map_masked
                                                         )
         
@@ -150,7 +150,7 @@ class MapModelMixin:
         if self.likelihood == 'point':
             self._prior.remove_prior(prior_indices=[0, 1])
         elif self.likelihood == 'poisson':
-            self.prior.remove_prior(prior_indices=[1])
+            self._prior.remove_prior(prior_indices=[1])
             self._prior.change_prior(
                 prior_index=0,
                 new_prior=[
@@ -160,7 +160,7 @@ class MapModelMixin:
                 ]
             )
         elif self.likelihood == 'poisson_rms':
-            self.prior.change_prior(
+            self._prior.change_prior(
                 prior_index=0,
                 new_prior=[
                     'Uniform',
@@ -168,7 +168,7 @@ class MapModelMixin:
                     1.25 * self.rms_mean_density
                 ]
             )
-            self.prior.change_prior(
+            self._prior.change_prior(
                 prior_index=1,
                 new_prior=[
                     'Uniform',
