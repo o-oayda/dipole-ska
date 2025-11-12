@@ -51,10 +51,15 @@ if plot_enabled:
 
 if args.model == 'dipole':
     model = Dipole(masked_dmap, likelihood='poisson')
+    step = False
 else:
-    model = Multipole(masked_dmap, ells=[1, 2])
+    model = Multipole(masked_dmap, ells=[0, 1, 2])
+    step = True
 
-model.run_nested_sampling()
+if plot_enabled:
+    model.prior.plot_priors()
+
+model.run_nested_sampling(step=step)
 
 if plot_enabled:
     model.corner_plot(backend='getdist', coordinates=['equatorial', 'galactic'])
