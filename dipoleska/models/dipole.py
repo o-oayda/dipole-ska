@@ -4,7 +4,7 @@ from dipoleska.models.model_helpers import LikelihoodMixin, MapModelMixin
 from dipoleska.utils.inference import InferenceMixin
 from typing import Literal
 from dipoleska.models.priors import Prior
-from dipoleska.utils.math import compute_dipole_signal
+from dipoleska.utils.math import compute_dipole_signal, vectorised_rms_signal
 from dipoleska.utils.posterior import PosteriorMixin
 
 class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
@@ -183,13 +183,10 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             mean_count = Theta[:, 0]
             rms_slope = Theta[:, 1]
             
-            # (n_pix, )
             assert self.rms_map is not None
-            rms_ratio = self.rms_map/self.rms_ref
+            rms_ratio = self.rms_map / self.rms_ref
+            rms_scaling = vectorised_rms_signal(rms_ratio, rms_slope)
             
-            # (n_pix, 1) * (1, n_live) --> (n_pix, n_live)
-            rms_scaling = rms_ratio[:, None] ** (-rms_slope[None, :])
-
             # (1, n_live) * (n_pix, n_live) * (n_pix, n_live )--> (n_pix, n_live)
             model_map = mean_count[None, :] * rms_scaling * (1 + dipole_signal)
             return model_map

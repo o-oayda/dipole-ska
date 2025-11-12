@@ -71,6 +71,22 @@ def compute_dipole_signal(
         dipole_signal = np.einsum('ki,ji->jk', dipole_vector, pixel_vectors)
         return dipole_signal
 
+def vectorised_rms_signal(
+        rms_ratio: NDArray[np.float64],
+        rms_slope: NDArray[np.float64]
+) -> NDArray[np.float64]:
+        '''
+        Compute the relation `(sigma / sigma_0)**(-x)` for a vectorised RMS log 
+        likelihood call.
+
+        :param rms_ratio: The value of sigma / sigma_0, of shape (n_pix,).
+        :param rms_slope: The current live samples of rms_slopem, shape (npix,).
+        :return: The relation, of shape (n_pix, n_live).
+        '''
+        # (n_pix, 1) * (1, n_live) --> (n_pix, n_live)
+        rms_scaling = rms_ratio[:, None] ** (-rms_slope[None, :])
+        return rms_scaling
+
 def vectorised_quadrupole_tensor(
         amplitude_like: NDArray[np.float64],
         cartesian_quadrupole_vectors: NDArray[np.float64]

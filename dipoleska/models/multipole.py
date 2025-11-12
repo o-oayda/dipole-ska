@@ -4,7 +4,7 @@ from collections import defaultdict
 from dipoleska.utils.inference import InferenceMixin
 from dipoleska.utils.math import (
     compute_dipole_signal, multipole_pixel_product_vectorised,
-    multipole_tensor_vectorised, vectorised_quadrupole_tensor,
+    multipole_tensor_vectorised, vectorised_quadrupole_tensor, vectorised_rms_signal,
     vectorised_spherical_to_cartesian
 )
 from dipoleska.utils.posterior import PosteriorMixin
@@ -16,6 +16,7 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             density_map: NDArray[np.int_ | np.float64],
             ells: list[int],
             prior: Prior | None = None, 
+            rms_map: NDArray[np.float64] | None = None
     ):
         '''
         Fit an abitrary number of monopoles of different orders.
@@ -55,18 +56,29 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             determine why this is.
             dipole-stats: 116s
             dipole-ska: 158s
+            - note 11.11.25: performance looks to be only a ~10% difference
+                judging from the fiducial map integration test.
         '''
         self._get_healpy_map_attributes(density_map)
         self._construct_multipole_priors(ells, prior)
+        self._get_rms_fit_parameters(rms_map)
         
         # if we are fitting a monopole (ell=0), adjust the monopole prior to center
         # around the mean number density; otherwise, for point-by-point, the
         # prior will automatically lack a monopole prior, so no change needed
         if any(ell == 0 for ell in ells):
             self.monopole_is_fitted = True
-            self._parse_likelihood_choice('poisson')
+            if self._rms_map is None:
+                likelihood = 'poisson'
+            else:
+                likelihood = 'poisson_rms'
+            self._parse_likelihood_choice(likelihood)
         else:
             self.monopole_is_fitted = False
+            assert self._rms_map is None, (
+                "When passing an rms map (Poisson rms likelihood), "
+                "0 must be included in the list of ells."
+            )
 
         self._parameter_names = self.prior.parameter_names
         self.ndim = self.prior.ndim
@@ -115,7 +127,9 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         self.theta_indices = defaultdict(list)
         
         for i, key in enumerate(self.parameter_names):
-            if 'M' in key:
+            if 'rms' in key: # skip over rms slope param
+                continue
+            elif 'M' in key:
                 continue
             else:
                 angle_type, ell, vec_number = key.split('_') # e.g. phi_l2_1
@@ -137,6 +151,17 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         unmasked pixels for inference.
         '''
         return self._density_map_masked
+
+    @property
+    def rms_map(self) -> NDArray[np.int_ | np.float64] | None:
+        '''
+        Whenever the model calls the `rms_map` attribute, provide only the
+        unmasked pixels for inference.
+        '''
+        if self._rms_map is None:
+            return
+        else:
+            return self._rms_map[self.boolean_mask]
     
     @property
     def pixel_vectors(self) -> NDArray[np.float64]:
@@ -190,8 +215,14 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         signal, then the octupole signal, summing them cumulatively.
         '''
         nlive = Theta.shape[0]
-        if self.monopole_is_fitted: # exclude first params, which will be Nbar
-            amplitude_like = Theta[:, 1:self.n_multipoles]
+        if self.monopole_is_fitted: 
+            if self.rms_map is None:
+                # exclude first params, which will be Nbar
+                amplitude_like = Theta[:, 1:self.n_multipoles]
+            else:
+                # the rms slope param gets fanged into index 1 by convention
+                # not great practice, but will do for now
+                amplitude_like = Theta[:, 2:self.n_multipoles+1]
         else:
             amplitude_like = Theta[:, :self.n_multipoles]
         
@@ -207,7 +238,14 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         
         if self.monopole_is_fitted:
             mean_number_density = Theta[:, 0]
-            return mean_number_density[None, :] * np.ones(signal.shape) * signal
+
+            if self.rms_map is None:
+                return mean_number_density[None, :] * signal
+            else:
+                rms_slope = Theta[:, 1]    
+                rms_ratio = self.rms_map / self.rms_ref
+                rms_scaling = vectorised_rms_signal(rms_ratio, rms_slope)
+                return mean_number_density[None, :] * rms_scaling * signal
         else:
             return signal
     
