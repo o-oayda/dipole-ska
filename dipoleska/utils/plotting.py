@@ -20,7 +20,8 @@ _PARAMETER_LATEX_MAP: dict[str, str] = {
     'phi': r'\phi\,(\mathrm{rad})',
     'theta': r'\theta\,(\mathrm{rad})',
     'D': r'\mathcal{D}_{\mathrm{EB}}',
-    'Nbar': r'\bar{N}_{\mathrm{sources}}'
+    'Nbar': r'\bar{N}_{\mathrm{sources}}',
+    'rms_slope': r'x_{\mathrm{RMS}}'
 }
 
 ANGLE_LABEL_OVERRIDES: dict[str, dict[str, dict[str, str]]] = {

@@ -102,17 +102,25 @@ class MapModelMixin:
         self._pixel_vectors_xyz_masked = [x, y, z]
         
     def _get_rms_fit_parameters(self,
-            rms_map: NDArray[np.int_ | np.float64]
+            rms_map: NDArray[np.float64] | None
             ) -> None:
         '''
         Fit the rms map to a power law and store the fit parameters.
+
+        :param rms_map: 1D numpy array of shape (n_pix,). Must have the same 
+            shape, pixel ordering, and HEALPix nside as the density map used 
+            in this model. Both maps should use the same masking convention 
+            (np.nan for masked pixels), and be aligned such that each element 
+            corresponds to the same sky pixel.
         '''
         self._rms_map = rms_map
-        self._rms_map_masked = self._rms_map[self.boolean_mask]
-        self.rms_mean_density, self.rms_slope = rms_power_law_fit(
-                                                            self._rms_map_masked,
-                                                        self._density_map_masked
-                                                        )
+        if self._rms_map is not None:
+            self.rms_ref = np.nanmedian(self._rms_map)
+            self._rms_map_masked = self._rms_map[self.boolean_mask]
+            self.rms_mean_density, self.rms_slope = rms_power_law_fit(
+                rms_map=self._rms_map_masked,
+                density_map=self._density_map_masked
+            )
         
     def _parse_prior_choice(self,
             default_prior: str,
@@ -128,7 +136,7 @@ class MapModelMixin:
             self._prior = prior
 
     def _parse_likelihood_choice(self,
-            likelihood: Literal['point', 'poisson']
+            likelihood: Literal['point', 'poisson', 'poisson_rms']
         ) -> None:
         '''
         If one specifies the point-by-point likelihood, we don't need to fit
@@ -148,9 +156,9 @@ class MapModelMixin:
         self.likelihood = likelihood
 
         if self.likelihood == 'point':
-            self._prior.remove_prior(prior_indices=[0, 1])
+            self._prior.remove_prior(prior_indices=[0])
+
         elif self.likelihood == 'poisson':
-            self._prior.remove_prior(prior_indices=[1])
             self._prior.change_prior(
                 prior_index=0,
                 new_prior=[
@@ -159,7 +167,12 @@ class MapModelMixin:
                     1.25 * self.mean_density
                 ]
             )
+
         elif self.likelihood == 'poisson_rms':
+            assert self._rms_map is not None, (
+                "rms_map is required when using 'poisson_rms' likelihood"
+            )
+
             self._prior.change_prior(
                 prior_index=0,
                 new_prior=[
@@ -168,14 +181,16 @@ class MapModelMixin:
                     1.25 * self.rms_mean_density
                 ]
             )
-            self._prior.change_prior(
+            self._prior.add_prior(
                 prior_index=1,
-                new_prior=[
+                prior_name='rms_slope',
+                prior_alias=[
                     'Uniform',
                     0.75 * self.rms_slope,
                     1.25 * self.rms_slope
                 ]
             )
+
         else:
             raise Exception(
                 f'Likelihood choice ({self.likelihood}) not recognised.'

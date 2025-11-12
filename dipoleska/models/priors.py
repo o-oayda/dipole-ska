@@ -74,26 +74,41 @@ class Prior:
         :param new_prior: Specify the new sampling distribution. See the
         `__init__` docstring for how to format this distribution.
         '''
-        assert (
-            type(new_prior[0]) is str
-        ), 'The new prior list must start with a distribution string.'
-
-        assert (
-            isinstance(new_prior[1], (float, np.floating))
-            and
-            isinstance(new_prior[2], (float, np.floating))
-        ), 'The second and third elements of the new prior list must be floats.'
-
-        new_distribution = self._get_prior_callable(new_prior[0])
-        new_minimum = new_prior[1]
-        new_maximum = new_prior[2]
-        
-        new_callable = self._construct_callable(
-            callable_prior_function=new_distribution,
-            minimum=new_minimum,
-            maximum=new_maximum
-        )
+        new_callable = self._prior_alias_to_callable(new_prior)
         self.prior_transforms[prior_index] = new_callable
+    
+    def add_prior(self,
+            prior_index: int,
+            prior_name: str,
+            prior_alias: list[str | (float | np.float_)]
+        ) -> None:
+        '''
+        Insert a new prior definition into the list of transforms.
+
+        :param prior_index: Location in `prior_transforms` and
+            `parameter_names` at which to insert the new prior.
+        :param prior_name: Name of the parameter associated with the prior.
+        :param prior_alias: Sampling distribution alias. Same structure as the
+            `new_prior` argument in `change_prior`.
+        '''
+        assert isinstance(prior_name, str), 'Prior name must be a string.'
+        assert 0 <= prior_index <= len(self.prior_transforms), (
+            f'Prior index ({prior_index}) out of bounds for '
+            f'{len(self.prior_transforms)}-dimensional prior.'
+        )
+        assert prior_name not in self.parameter_names, (
+            f'Prior name "{prior_name}" already exists.'
+        )
+
+        new_callable = self._prior_alias_to_callable(prior_alias)
+        self.prior_transforms.insert(prior_index, new_callable)
+        self.parameter_names.insert(prior_index, prior_name)
+        self.ndim += 1
+
+        # Maintain `prior_dict` ordering so future operations stay consistent.
+        prior_items = list(self.prior_dict.items())
+        prior_items.insert(prior_index, (prior_name, prior_alias))
+        self.prior_dict = dict(prior_items)
     
     def remove_prior(self,
             prior_indices: list[int]
@@ -216,6 +231,32 @@ class Prior:
             'Polar': uniform_to_polar_transform
         }
         return distribution_to_function[distribution]
+    
+    def _prior_alias_to_callable(self,
+            prior_alias: list[str | (float | np.float_)]
+    ) -> Callable:
+        '''
+        Convert a prior alias (distribution name and bounds) into the callable
+        transform used by the sampler.
+        '''
+        assert len(prior_alias) >= 3, (
+            'Prior alias must contain a distribution and two bounds.'
+        )
+        assert (
+            type(prior_alias[0]) is str
+        ), 'Prior alias must start with a distribution string.'
+        assert (
+            isinstance(prior_alias[1], (float, np.floating))
+            and
+            isinstance(prior_alias[2], (float, np.floating))
+        ), 'Prior alias bounds must be floats.'
+
+        distribution_callable = self._get_prior_callable(prior_alias[0])
+        return self._construct_callable(
+            callable_prior_function=distribution_callable,
+            minimum=prior_alias[1],
+            maximum=prior_alias[2]
+        )
     
     def _construct_callable(self,
             callable_prior_function: Callable,

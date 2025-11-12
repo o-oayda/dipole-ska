@@ -383,14 +383,21 @@ def sigma_to_prob2D(sigma: list[float]) -> NDArray[np.float64]:
     return 1.0 - np.exp(-0.5 * np.asarray(sigma)**2)
 
 def rms_power_law_fit(rms_map: NDArray[np.float64],
-                      density_map: NDArray[np.float64],
+                      density_map: NDArray[np.float64 | np.int_],
                       ) -> tuple[float, float]:
     '''
     Fit a function of the form mean_density*(rms/median(rms))^-slope to the 
     density map using scipy's curve_fit.
+
+    :return: Tuple containing (mean_density, slope) from the power-law fit.
     '''
     power_law = lambda x, a, b: a*x**(-b)
     rms_median = np.nanmedian(rms_map)
+    
+    # double-check that no nans have propagated to here
+    assert np.isfinite(rms_map).all()
+    assert np.isfinite(density_map).all()
+
     try:
         popt, _ = curve_fit(power_law, rms_map/rms_median, density_map)
         return popt[0], popt[1]
