@@ -1,3 +1,20 @@
+# This script demonstrates the use of the Dipole model with a Poisson likelihood 
+# that incorporates RMS noise in the data. The likelihood function is taken from
+# Wagenvald et al. (2023). This likelihood scales the number density by a
+# power-law function of the RMS noise map. So, for each pixel, the rate parameter
+# is given by:
+#
+#     λ_i = M * (rms_i / rms_ref)^(-x_rms) * (1 + d̂ · n̂_i)
+#
+# where M is a proxy for mean density, rms_i is the RMS noise in pixel i,
+# rms_ref is the reference RMS value (depends of the telescope's actual beam
+# size), x_rms is the power-law index that describes how the number density scales
+# with RMS noise, d̂ is the dipole direction, and n̂_i is the unit vector pointing
+# to pixel i. Note that rms_ref can be chosen as the median RMS noise across the 
+# map: then M corresponds to the monopole density - we implement this in our code.
+# A more general implementation involves using the actual rms_ref, which will be 
+# available once SKA commences observations.
+
 import matplotlib.pyplot as plt
 from dipoleska.models.dipole import Dipole
 from dipoleska.utils.map_process import MapProcessor
