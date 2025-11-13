@@ -21,7 +21,8 @@ _PARAMETER_LATEX_MAP: dict[str, str] = {
     'theta': r'\theta\,(\mathrm{rad})',
     'D': r'\mathcal{D}_{\mathrm{EB}}',
     'Nbar': r'\bar{N}_{\mathrm{sources}}',
-    'rms_slope': r'x_{\mathrm{RMS}}'
+    'rms_slope': r'x_{\mathrm{RMS}}',
+    'glb_param': r'b_{\mathrm{gp}}',
 }
 
 ANGLE_LABEL_OVERRIDES: dict[str, dict[str, dict[str, str]]] = {

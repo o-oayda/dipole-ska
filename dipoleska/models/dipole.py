@@ -11,7 +11,9 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
     def __init__(self,
             density_map: NDArray[np.int_ | np.float64],
             prior: Prior | None = None,
-            likelihood: Literal['point', 'poisson', 'poisson_rms'] = 'point',
+            likelihood: Literal['point', 'poisson', 'poisson_rms',
+                                'general_poisson',
+                                'general_poisson+rms'] = 'point',
             rms_map: NDArray[np.float64] | None = None,
             fixed_dipole: tuple[float, float, float] | None = None
     ):
@@ -52,6 +54,9 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             - `'point'` for the point-by-point likelihood.
             - `'poisson_rms'` for the Poisson-based likelihood with 
                 RMS augmentation.
+            - `'general_poisson'` for the generalised Poisson likelihood.
+            - `'general_poisson+rms'` for the generalised Poisson likelihood
+                with RMS augmentation.
             As mentioned above, this choice will dynamically change the model
             dimensionality and the prior distributions.
         :param rms_map:
@@ -132,6 +137,12 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
                 rate_parameter=dipole_term,
                 density_map=self.density_map
             )
+
+        if self.likelihood in ['general_poisson', 'general_poisson_rms']:
+            return self.general_poisson_log_likelihood(
+                model_output=dipole_term,
+                density_map=self.density_map
+            )
         else:
             raise ValueError(
                 f'Likelihood not recognised {self.likelihood}'
@@ -174,12 +185,14 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
 
         if self.likelihood == 'point':
             return 1 + dipole_signal
-
-        elif self.likelihood == 'poisson':
+        
+        if self.likelihood in ['poisson','general_poisson']:
             mean_count = Theta[:, 0]
-            return mean_count * (1 + dipole_signal)
-
-        elif self.likelihood == 'poisson_rms':
+            model_map = mean_count * (1 + dipole_signal)
+            g_p = Theta[:, 1] if self.likelihood == 'general_poisson' else None
+            return (model_map, g_p) if g_p is not None else model_map
+        
+        if self.likelihood in ['poisson_rms', 'general_poisson_rms']:
             mean_count = Theta[:, 0]
             rms_slope = Theta[:, 1]
             
@@ -192,7 +205,53 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
 
             # (1, n_live) * (n_pix, n_live) * (n_pix, n_live )--> (n_pix, n_live)
             model_map = mean_count[None, :] * rms_scaling * (1 + dipole_signal)
-            return model_map
+            
+            g_p = Theta[:, 2] if self.likelihood == 'general_poisson_rms' else None
+            return (model_map, g_p) if g_p is not None else model_map
+            
+            
+        
+        # if self.likelihood == 'poisson':
+        #     mean_count = Theta[:, 0]
+        #     model_map = mean_count * (1 + dipole_signal)
+        #     return model_map
+        
+        # if self.likelihood == 'general_poisson':
+        #     mean_count = Theta[:, 0]
+        #     glb_param = Theta[:, 1]
+        #     model_map = mean_count * (1 + dipole_signal)
+        #     return (model_map, glb_param)
+
+        # if self.likelihood == 'poisson_rms':
+        #     mean_count = Theta[:, 0]
+        #     rms_slope = Theta[:, 1]
+            
+        #     # (n_pix, )
+        #     assert self.rms_map is not None
+        #     rms_ratio = self.rms_map/self.rms_ref
+            
+        #     # (n_pix, 1) * (1, n_live) --> (n_pix, n_live)
+        #     rms_scaling = rms_ratio[:, None] ** (-rms_slope[None, :])
+
+        #     # (1, n_live) * (n_pix, n_live) * (n_pix, n_live )--> (n_pix, n_live)
+        #     model_map = mean_count[None, :] * rms_scaling * (1 + dipole_signal)
+        #     return model_map
+        
+        # if self.likelihood == 'general_poisson_rms':
+        #     mean_count = Theta[:, 0]
+        #     rms_slope = Theta[:, 1]
+        #     glb_param = Theta[:, 2]
+            
+        #     # (n_pix, )
+        #     assert self.rms_map is not None
+        #     rms_ratio = self.rms_map/self.rms_ref
+            
+        #     # (n_pix, 1) * (1, n_live) --> (n_pix, n_live)
+        #     rms_scaling = rms_ratio[:, None] ** (-rms_slope[None, :])
+
+        #     # (1, n_live) * (n_pix, n_live) * (n_pix, n_live )--> (n_pix, n_live)
+        #     model_map = mean_count[None, :] * rms_scaling * (1 + dipole_signal)
+        #     return (model_map, glb_param)
         
         else:
             raise ValueError(
