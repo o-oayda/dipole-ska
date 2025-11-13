@@ -157,19 +157,6 @@ class MapModelMixin:
                 rms_map=self._rms_map_masked,
                 density_map=self._density_map_masked
             )
-        
-    def _parse_prior_choice(self,
-            default_prior: str,
-            prior: Prior | None = None
-        ) -> None:
-        '''
-        Switch to a default prior if the user has not specified one, or use
-        the explicit one the user has provided.
-        '''
-        if prior is None:
-            self._prior = Prior(choose_prior=default_prior)
-        else:
-            self._prior = prior
 
     def _parse_likelihood_choice(self,
             likelihood: Literal['point', 'poisson', 'poisson_rms',
