@@ -60,8 +60,8 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
                 judging from the fiducial map integration test.
         '''
         self._get_healpy_map_attributes(density_map)
-        self._construct_multipole_priors(ells, prior)
         self._get_rms_fit_parameters(rms_map)
+        self._setup_multipole_prior(ells=ells, prior=prior)
         
         # if we are fitting a monopole (ell=0), adjust the monopole prior to center
         # around the mean number density; otherwise, for point-by-point, the
@@ -85,42 +85,70 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         self.n_multipoles = len(ells)
         self._get_angle_indices()
     
-    def _construct_multipole_priors(self,
+    def _setup_multipole_prior(
+            self,
             ells: list[int],
-            prior: Prior | None = None
+            prior: Prior | None
     ) -> None:
+        '''
+        Build priors for arbitrary ells, allowing user-specified entries to
+        override default choices.
+        '''
+        default_prior_dict = self._default_multipole_prior_aliases(ells)
+
         if prior is None:
-            azimuthal_priors = ['Uniform', 0., 2 * np.pi]
-            polar_priors = ['Polar', 0., np.pi]
-            amplitude_priors = ['Uniform', 0., 0.1]
-            monopole_priors = ['Uniform', 0., 0.] # placeholder: is replaced later
-            all_amplitude_priors = {}
-            all_angle_priors = {}
-            
-            for ell in ells:    
-                if ell == 0:
-                    label = 'M0'
-                    all_amplitude_priors[label] = monopole_priors
-                
-                else:
-                    amplitude_label = f'M{ell}'
-                    prior_list = amplitude_priors.copy()
-                    prior_list[-1] = prior_list[-1] * ell ** 2 # naively scale prior range by ell^2
-                    all_amplitude_priors[amplitude_label] = prior_list
+            self._prior = Prior(choose_prior=default_prior_dict)
+            return
 
-                    # for each ell with amplitude M_ell, add the 2*ell unit vector priors
-                    for i in range(2 * ell):
-                        subscript = f'l{ell}_{i//2}'
+        assert hasattr(prior, 'prior_dict'), (
+            'Custom priors must expose a prior_dict attribute.'
+        )
+        user_dict = prior.prior_dict
+        unknown = sorted(set(user_dict) - set(default_prior_dict))
+        if unknown:
+            raise ValueError(
+                'Unrecognised prior parameter(s) for Multipole model: '
+                + ', '.join(unknown)
+            )
 
-                        if i % 2 == 0:
-                            all_angle_priors[f'phi_{subscript}'] = azimuthal_priors
-                        else:
-                            all_angle_priors[f'theta_{subscript}'] = polar_priors
-            
-            all_priors = {**all_amplitude_priors, **all_angle_priors}
-            self._prior = Prior(choose_prior=all_priors)
-        else:
-            self._prior = prior
+        merged = default_prior_dict.copy()
+        merged.update(user_dict)
+        defaulted = sorted(set(default_prior_dict) - set(user_dict))
+        if defaulted:
+            print(
+                '[Multipole] Using default priors for parameters: '
+                + ', '.join(defaulted)
+            )
+
+        self._prior = Prior(choose_prior=merged)
+
+    def _default_multipole_prior_aliases(
+            self,
+            ells: list[int]
+    ) -> dict[str, list[float | np.floating | str]]:
+        azimuthal = ['Uniform', 0.0, 2 * np.pi]
+        polar = ['Polar', 0.0, np.pi]
+        priors: dict[str, list[float | np.floating | str]] = {}
+
+        for ell in ells:
+            amplitude_name = f'M{ell}'
+            if ell == 0:
+                priors[amplitude_name] = [
+                    'Uniform',
+                    0.75 * self.mean_density,
+                    1.25 * self.mean_density
+                ]
+            else:
+                priors[amplitude_name] = ['Uniform', 0.0, 0.1 * ell ** 2]
+
+        for ell in ells:
+            if ell == 0:
+                continue
+            for vec_idx in range(ell):
+                priors[f'phi_l{ell}_{vec_idx}'] = azimuthal.copy()
+                priors[f'theta_l{ell}_{vec_idx}'] = polar.copy()
+
+        return priors
 
     def _get_angle_indices(self):
         self.phi_indices = defaultdict(list)
