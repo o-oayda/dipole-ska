@@ -136,6 +136,28 @@ class MapModelMixin:
         self._pixel_vectors_masked = self._pixel_vectors[self.boolean_mask]
         x, y, z = self._pixel_vectors[self.boolean_mask].T
         self._pixel_vectors_xyz_masked = [x, y, z]
+
+    @staticmethod
+    def _log_prior_sources(
+            model_label: str,
+            merged: dict[str, list[float | np.floating | str]],
+            overrides: dict[str, list[float | np.floating | str]]
+    ) -> None:
+        lines = [f'[{model_label}] Prior configuration:']
+        for name, alias in merged.items():
+            source = 'custom' if name in overrides else 'default'
+            lines.append(f'  - {name}: {MapModelMixin._format_alias(alias)} ({source})')
+        print('\n'.join(lines))
+
+    @staticmethod
+    def _format_alias(alias: list[float | np.floating | str]) -> str:
+        formatted = []
+        for item in alias:
+            if isinstance(item, (float, np.floating)):
+                formatted.append(f'{item:.4g}')
+            else:
+                formatted.append(str(item))
+        return '[' + ', '.join(formatted) + ']'
         
     def _get_rms_fit_parameters(self,
             rms_map: NDArray[np.float64] | None

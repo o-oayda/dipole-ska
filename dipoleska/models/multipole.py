@@ -90,6 +90,7 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         default_prior_dict = self._default_multipole_prior_aliases(ells)
 
         if prior is None:
+            self._log_prior_sources('Multipole', default_prior_dict, overrides={})
             self._prior = Prior(choose_prior=default_prior_dict)
             return
 
@@ -106,12 +107,7 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
 
         merged = default_prior_dict.copy()
         merged.update(user_dict)
-        defaulted = sorted(set(default_prior_dict) - set(user_dict))
-        if defaulted:
-            print(
-                '[Multipole] Using default priors for parameters: '
-                + ', '.join(defaulted)
-            )
+        self._log_prior_sources('Multipole', merged, user_dict)
 
         self._prior = Prior(choose_prior=merged)
 
@@ -142,6 +138,7 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
                 priors[f'theta_l{ell}_{vec_idx}'] = polar.copy()
 
         return priors
+
 
     def _get_angle_indices(self):
         self.phi_indices = defaultdict(list)
