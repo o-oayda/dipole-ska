@@ -70,9 +70,8 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             plus a free (fitted) dipole.
         '''
         self._get_healpy_map_attributes(density_map)
-        self._parse_prior_choice(default_prior='dipole', prior=prior)
-        self._get_rms_fit_parameters(rms_map) 
-        self._parse_likelihood_choice(likelihood)
+        self._get_rms_fit_parameters(rms_map)
+        self._setup_dipole_prior(prior=prior, likelihood=likelihood)
         self._parameter_names = self.prior.parameter_names
         self.ndim = self.prior.ndim
         if fixed_dipole is not None:
@@ -157,6 +156,84 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             raise ValueError(
                 f'Likelihood not recognised {self.likelihood}'
             )
+
+    def _setup_dipole_prior(
+            self,
+            prior: Prior | None,
+            likelihood: Literal['point', 'poisson', 'poisson_rms',
+                                'general_poisson', 'general_poisson_rms']
+    ) -> None:
+        '''
+        Build the prior dictionary for the requested likelihood, allowing
+        user-specified priors to override individual parameters while falling
+        back to defaults for everything else.
+        '''
+        if likelihood in ['poisson_rms', 'general_poisson_rms']:
+            assert self._rms_map is not None, (
+                f"rms_map must be provided when using '{likelihood}' likelihood."
+            )
+
+        self.likelihood = likelihood
+        default_prior_dict = self._default_prior_aliases(likelihood=likelihood)
+
+        if prior is None:
+            self._prior = Prior(choose_prior=default_prior_dict)
+            return
+
+        assert hasattr(prior, 'prior_dict'), (
+            'Custom priors must expose a prior_dict attribute.'
+        )
+        user_dict = prior.prior_dict
+        unknown = sorted(set(user_dict) - set(default_prior_dict))
+        if unknown:
+            raise ValueError(
+                'Unrecognised prior parameter(s) for Dipole model: '
+                + ', '.join(unknown)
+            )
+
+        merged = default_prior_dict.copy()
+        merged.update(user_dict)
+        defaulted = sorted(set(default_prior_dict) - set(user_dict))
+        if defaulted:
+            print(
+                '[Dipole] Using default priors for parameters: '
+                + ', '.join(defaulted)
+            )
+
+        self._prior = Prior(choose_prior=merged)
+
+    def _default_prior_aliases(
+            self,
+            likelihood: Literal['point', 'poisson', 'poisson_rms',
+                                'general_poisson', 'general_poisson_rms']
+    ) -> dict[str, list[float | np.floating | str]]:
+        '''
+        Assemble the default prior dictionary for the requested likelihood.
+        '''
+        defaults: dict[str, list[float | np.floating | str]] = {}
+        if likelihood != 'point':
+            defaults['Nbar'] = [
+                'Uniform',
+                0.75 * self.mean_density,
+                1.25 * self.mean_density
+            ]
+
+        if 'rms' in likelihood:
+            defaults['rms_slope'] = [
+                'Uniform',
+                0.75 * self.rms_slope,
+                1.25 * self.rms_slope
+            ]
+
+        if 'general_poisson' in likelihood:
+            defaults['gp_dispersion'] = ['Uniform', 0.0, 1.0]
+
+        defaults.update({
+            'D': ['Uniform', 0.0, 0.1],
+            'phi': ['Uniform', 0.0, 2 * np.pi],
+            'theta': ['Polar', 0.0, np.pi]
+        })
+        return defaults
 
     def model(self,
             Theta: NDArray[np.float64]
