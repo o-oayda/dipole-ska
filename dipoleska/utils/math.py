@@ -351,11 +351,14 @@ def kronecker_einstring(rank: int, n_kroneckers: int) -> str:
     idxs = np.arange(1, rank+1)
     assert not (2*n_kroneckers > rank), 'Too many Kronecker deltas.'
 
+    comma_count = 0
     for i in idxs:
         letter = chr(ord('`')+i)
         einstring += letter
-        if (i % 2 == 0) and (i / (2*n_kroneckers) <= 1):
-            einstring += ','
+        if n_kroneckers and (i % 2 == 0):
+            comma_count += 1
+            if comma_count <= n_kroneckers:
+                einstring += ','
 
     if 2 * n_kroneckers == rank:
         einstring = einstring[:-1]
