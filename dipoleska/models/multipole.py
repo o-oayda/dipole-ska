@@ -61,6 +61,8 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         '''
         self._get_healpy_map_attributes(density_map)
         self._get_rms_fit_parameters(rms_map)
+        self.ells = ells
+        self.multipole_orders = [ell for ell in ells if ell != 0]
         self._setup_multipole_prior(ells=ells, prior=prior)
         
         # if we are fitting a monopole (ell=0), adjust the monopole prior to center
@@ -82,7 +84,8 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
 
         self._parameter_names = self.prior.parameter_names
         self.ndim = self.prior.ndim
-        self.n_multipoles = len(ells)
+        self.n_multipoles = len(self.multipole_orders)
+        self._cache_parameter_indices()
         self._get_angle_indices()
     
     def _setup_multipole_prior(
@@ -243,16 +246,13 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         signal, then the octupole signal, summing them cumulatively.
         '''
         nlive = Theta.shape[0]
-        if self.monopole_is_fitted: 
-            if self.rms_map is None:
-                # exclude first params, which will be Nbar
-                amplitude_like = Theta[:, 1:self.n_multipoles]
-            else:
-                # the rms slope param gets fanged into index 1 by convention
-                # not great practice, but will do for now
-                amplitude_like = Theta[:, 2:self.n_multipoles+1]
+        if self.multipole_orders:
+            amplitude_like = np.column_stack([
+                self._theta_param(Theta, f'M{ell}')
+                for ell in self.multipole_orders
+            ])
         else:
-            amplitude_like = Theta[:, :self.n_multipoles]
+            amplitude_like = np.zeros((nlive, 0))
         
         signal = np.ones((self.n_unmasked, nlive))
         for i, ((ell, phi_idxs), (ell, theta_idxs)) in enumerate(
@@ -265,12 +265,12 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             )
         
         if self.monopole_is_fitted:
-            mean_number_density = Theta[:, 0]
+            mean_number_density = self._theta_param(Theta, 'M0')
 
             if self.rms_map is None:
                 return mean_number_density[None, :] * signal
             else:
-                rms_slope = Theta[:, 1]    
+                rms_slope = self._theta_param(Theta, 'rms_slope')
                 rms_ratio = self.rms_map / self.rms_ref
                 rms_scaling = vectorised_rms_signal(rms_ratio, rms_slope)
                 return mean_number_density[None, :] * rms_scaling * signal
@@ -340,4 +340,14 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
                 pixel_vectors=self.pixel_vectors_xyz,
                 ell=multipole_longitudes.shape[-1]
             )
-            return multipole_signal
+        return multipole_signal
+
+    def _cache_parameter_indices(self) -> None:
+        self._parameter_indices = {
+            name: self.prior.index_for(name)
+            for name in self.prior.parameter_names
+        }
+
+    def _theta_param(self, Theta: NDArray[np.float64], name: str) -> NDArray[np.float64]:
+        idx = self._parameter_indices[name]
+        return Theta[:, idx]

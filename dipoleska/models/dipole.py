@@ -74,6 +74,7 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         self._setup_dipole_prior(prior=prior, likelihood=likelihood)
         self._parameter_names = self.prior.parameter_names
         self.ndim = self.prior.ndim
+        self._cache_parameter_indices()
         if fixed_dipole is not None:
             self.fixed_dipole = np.asarray(fixed_dipole)
         else:
@@ -156,6 +157,29 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             raise ValueError(
                 f'Likelihood not recognised {self.likelihood}'
             )
+
+    def _cache_parameter_indices(self) -> None:
+        '''
+        Cache parameter indices for fast lookup from Theta by name.
+        '''
+        self._parameter_indices = {
+            name: self.prior.index_for(name)
+            for name in self.prior.parameter_names
+        }
+
+    def _theta_param(self, Theta: NDArray[np.float64], name: str) -> NDArray[np.float64]:
+        idx = self._parameter_indices[name]
+        return Theta[:, idx]
+
+    def _optional_theta_param(
+            self,
+            Theta: NDArray[np.float64],
+            name: str
+    ) -> NDArray[np.float64] | None:
+        idx = self._parameter_indices.get(name)
+        if idx is None:
+            return None
+        return Theta[:, idx]
 
     def _setup_dipole_prior(
             self,
@@ -245,9 +269,9 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         :return: Vectorised evaluation of 1 + D cos(theta), of shape
             (n_pix, n_live).
         '''
-        dipole_amplitude = Theta[:, -3]
-        dipole_longitude = Theta[:, -2]
-        dipole_colatitude = Theta[:, -1]
+        dipole_amplitude = self._theta_param(Theta, 'D')
+        dipole_longitude = self._theta_param(Theta, 'phi')
+        dipole_colatitude = self._theta_param(Theta, 'theta')
 
         dipole_signal = compute_dipole_signal(
             dipole_amplitude=dipole_amplitude,
@@ -274,18 +298,18 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             return 1 + dipole_signal
         
         if self.likelihood in ['poisson', 'general_poisson']:
-            mean_count = Theta[:, 0]
+            mean_count = self._theta_param(Theta, 'Nbar')
             model_map = mean_count * (1 + dipole_signal)
 
             if self.likelihood == 'general_poisson':
-                gp_disperson = Theta[:, 1]
+                gp_disperson = self._theta_param(Theta, 'gp_dispersion')
                 return (model_map, gp_disperson)
             else:
                 return model_map
         
         if self.likelihood in ['poisson_rms', 'general_poisson_rms']:
-            mean_count = Theta[:, 0]
-            rms_slope = Theta[:, 1]
+            mean_count = self._theta_param(Theta, 'Nbar')
+            rms_slope = self._theta_param(Theta, 'rms_slope')
             
             assert self.rms_map is not None
             rms_ratio = self.rms_map / self.rms_ref
@@ -295,7 +319,7 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             model_map = mean_count[None, :] * rms_scaling * (1 + dipole_signal)
 
             if self.likelihood == 'general_poisson_rms':
-                gp_disperson = Theta[:, 2]
+                gp_disperson = self._theta_param(Theta, 'gp_dispersion')
                 return (model_map, gp_disperson)
             else:
                 return model_map
