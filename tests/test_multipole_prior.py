@@ -64,3 +64,50 @@ def test_default_notice_printed_when_needed(capsys: pytest.CaptureFixture[str]) 
 
     message = capsys.readouterr().out
     assert 'M1' in message
+
+
+def test_general_poisson_prior_includes_gp_dispersion() -> None:
+    density_map = _simple_density_map()
+
+    model = Multipole(density_map=density_map, ells=[0, 1], likelihood='general_poisson')
+
+    assert 'gp_dispersion' in model.prior.parameter_names
+
+
+def test_general_poisson_rms_prior_includes_rms_and_gp(monkeypatch: pytest.MonkeyPatch) -> None:
+    density_map = _simple_density_map()
+    rms_map = np.full_like(density_map, 1.0)
+
+    monkeypatch.setattr(
+        'dipoleska.models.model_helpers.rms_power_law_fit',
+        lambda rms_map, density_map: (1.0, 0.5)
+    )
+
+    model = Multipole(
+        density_map=density_map,
+        ells=[0, 1],
+        rms_map=rms_map,
+        likelihood='general_poisson_rms'
+    )
+
+    names = model.prior.parameter_names
+    assert 'rms_slope' in names
+    assert 'gp_dispersion' in names
+
+
+def test_general_poisson_model_returns_tuple() -> None:
+    density_map = _simple_density_map()
+    model = Multipole(density_map=density_map, ells=[0, 1], likelihood='general_poisson')
+
+    name_to_index = {name: idx for idx, name in enumerate(model.prior.parameter_names)}
+    Theta = np.zeros((1, model.ndim))
+    Theta[0, name_to_index['M0']] = 2.0
+    Theta[0, name_to_index['M1']] = 0.0
+    Theta[0, name_to_index['phi_l1_0']] = 0.0
+    Theta[0, name_to_index['theta_l1_0']] = 0.0
+    Theta[0, name_to_index['gp_dispersion']] = 0.2
+
+    model_map, gp = model.model(Theta)
+
+    assert model_map.shape == (model.n_unmasked, 1)
+    np.testing.assert_allclose(gp, [0.2])

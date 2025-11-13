@@ -1,6 +1,7 @@
 from numpy.typing import NDArray
 import numpy as np
 from collections import defaultdict
+from typing import Literal, cast
 from dipoleska.utils.inference import InferenceMixin
 from dipoleska.utils.math import (
     compute_dipole_signal, multipole_pixel_product_vectorised,
@@ -16,7 +17,11 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             density_map: NDArray[np.int_ | np.float64],
             ells: list[int],
             prior: Prior | None = None, 
-            rms_map: NDArray[np.float64] | None = None
+            rms_map: NDArray[np.float64] | None = None,
+            likelihood: Literal[
+                'point', 'poisson', 'poisson_rms',
+                'general_poisson', 'general_poisson_rms'
+            ] | None = None
     ):
         '''
         Fit an abitrary number of monopoles of different orders.
@@ -32,11 +37,23 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
                 * ``Mℓ`` for each amplitude (e.g. ``M0``, ``M1``, ``M2``)
                 * ``phi_lℓ_k`` / ``theta_lℓ_k`` for the ``k``-th unit vector of
                   order ``ℓ`` (e.g. ``phi_l2_1``, ``theta_l3_0``)
+              When using RMS-augmented likelihoods an additional ``rms_slope``
+              parameter is present, and the generalised Poisson likelihoods add
+              ``gp_dispersion``.
             - If a Prior instance is supplied, any matching names override the
               defaults while unsupplied parameters keep their built-in
               distributions. Names must follow the convention above;
               unrecognised names raise a ValueError. Ordering is irrelevant, as
               parameters are accessed by name internally.
+        :param likelihood:
+            Optionally override which likelihood is used. By default (``None``),
+            the model chooses ``'point'`` when no monopole is fitted and
+            ``'poisson'`` or ``'poisson_rms'`` when ``ell=0`` is included,
+            depending on whether ``rms_map`` is supplied. Valid choices are
+            ``'point'``, ``'poisson'``, ``'poisson_rms'``, ``'general_poisson'``,
+            and ``'general_poisson_rms'``; the latter two introduce the
+            ``gp_dispersion`` parameter in addition to the amplitudes and angles,
+            and the ``*_rms`` variants introduce ``rms_slope``.
         :param ells:
             Pass a list of multipole orders to fit, e.g. `ells = [1, 2, 3]`.
             If a monopole (0) is specified in the list, the Poissonian
@@ -53,25 +70,13 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         self._get_rms_fit_parameters(rms_map)
         self.ells = ells
         self.multipole_orders = [ell for ell in ells if ell != 0]
-        self._setup_multipole_prior(ells=ells, prior=prior)
+        self._determine_likelihood(ells=ells, user_likelihood=likelihood)
+        self._setup_multipole_prior(
+            ells=ells, 
+            prior=prior, 
+            likelihood=self.likelihood # pyright: ignore[reportArgumentType]
+        )
         
-        # if we are fitting a monopole (ell=0), adjust the monopole prior to center
-        # around the mean number density; otherwise, for point-by-point, the
-        # prior will automatically lack a monopole prior, so no change needed
-        if any(ell == 0 for ell in ells):
-            self.monopole_is_fitted = True
-            if self._rms_map is None:
-                likelihood = 'poisson'
-            else:
-                likelihood = 'poisson_rms'
-            self._parse_likelihood_choice(likelihood)
-        else:
-            self.monopole_is_fitted = False
-            assert self._rms_map is None, (
-                "When passing an rms map (Poisson rms likelihood), "
-                "0 must be included in the list of ells."
-            )
-
         self._parameter_names = self.prior.parameter_names
         self.ndim = self.prior.ndim
         self.n_multipoles = len(self.multipole_orders)
@@ -81,13 +86,15 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
     def _setup_multipole_prior(
             self,
             ells: list[int],
-            prior: Prior | None
+            prior: Prior | None,
+            likelihood: Literal['point', 'poisson', 'poisson_rms',
+                                'general_poisson', 'general_poisson_rms']
     ) -> None:
         '''
         Build priors for arbitrary ells, allowing user-specified entries to
         override default choices.
         '''
-        default_prior_dict = self._default_multipole_prior_aliases(ells)
+        default_prior_dict = self._default_multipole_prior_aliases(ells, likelihood)
 
         if prior is None:
             self._log_prior_sources('Multipole', default_prior_dict, overrides={})
@@ -113,7 +120,9 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
 
     def _default_multipole_prior_aliases(
             self,
-            ells: list[int]
+            ells: list[int],
+            likelihood: Literal['point', 'poisson', 'poisson_rms',
+                                'general_poisson', 'general_poisson_rms']
     ) -> dict[str, list[float | np.floating | str]]:
         azimuthal = ['Uniform', 0.0, 2 * np.pi]
         polar = ['Polar', 0.0, np.pi]
@@ -137,6 +146,16 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
                 priors[f'phi_l{ell}_{vec_idx}'] = azimuthal.copy()
                 priors[f'theta_l{ell}_{vec_idx}'] = polar.copy()
 
+        if 'rms' in likelihood:
+            priors['rms_slope'] = [
+                'Uniform',
+                0.75 * self.rms_slope,
+                1.25 * self.rms_slope
+            ]
+
+        if 'general_poisson' in likelihood:
+            priors['gp_dispersion'] = ['Uniform', 0.0, 1.0]
+
         return priors
 
 
@@ -149,6 +168,8 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
                 continue
             elif 'M' in key:
                 continue
+            elif key == 'gp_dispersion':
+                continue
             else:
                 angle_type, ell, vec_number = key.split('_') # e.g. phi_l2_1
 
@@ -159,8 +180,45 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
                 else:
                     self.theta_indices[new_key].append(i)
 
-    def _parse_multipole_likelihood(self, ells: list[int]) -> None:
-        pass
+    def _determine_likelihood(
+            self,
+            ells: list[int],
+            user_likelihood: Literal['point', 'poisson', 'poisson_rms',
+                                     'general_poisson', 'general_poisson_rms'] | None
+    ) -> None:
+        has_monopole = any(ell == 0 for ell in ells)
+        if user_likelihood is None:
+            if has_monopole:
+                if self._rms_map is None:
+                    chosen = 'poisson'
+                else:
+                    chosen = 'poisson_rms'
+            else:
+                chosen = 'point'
+        else:
+            chosen = user_likelihood
+
+        if chosen == 'point':
+            if has_monopole:
+                raise ValueError(
+                    "Point likelihood cannot be used when ell=0 is included."
+                )
+            self.monopole_is_fitted = False
+        elif chosen in ['poisson', 'poisson_rms', 'general_poisson', 'general_poisson_rms']:
+            if not has_monopole:
+                raise ValueError(
+                    f"Likelihood '{chosen}' requires ell=0 to be included."
+                )
+            self.monopole_is_fitted = True
+        else:
+            raise ValueError(f"Likelihood '{chosen}' not recognised.")
+
+        if 'rms' in chosen:
+            assert self._rms_map is not None, (
+                f"rms_map must be provided when using '{chosen}' likelihood."
+            )
+
+        self.likelihood = chosen
 
     @property
     def density_map(self) -> NDArray[np.int_ | np.float64]:
@@ -214,18 +272,36 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         '''
         multipole_terms = self.model(Theta)
 
-        if self.monopole_is_fitted:
-            return self.poisson_log_likelihood(
-                rate_parameter=multipole_terms,
-                density_map=self.density_map
-            )
-        else:
+        if self.likelihood == 'point':
+            signal = cast(NDArray[np.float64], multipole_terms)
             return self.point_by_point_log_likelihood(
-                multipole_signal=multipole_terms,
+                multipole_signal=signal,
                 density_map=self.density_map
             )
+
+        if self.likelihood in ['poisson', 'poisson_rms']:
+            rate_parameter = cast(NDArray[np.float64], multipole_terms)
+            return self.poisson_log_likelihood(
+                rate_parameter=rate_parameter,
+                density_map=self.density_map
+            )
+
+        if self.likelihood in ['general_poisson', 'general_poisson_rms']:
+            model_map, gp_dispersion = cast(
+                tuple[NDArray[np.float64], NDArray[np.float64]],
+                multipole_terms
+            )
+            return self.general_poisson_log_likelihood(
+                model_output=(model_map, gp_dispersion),
+                density_map=self.density_map
+            )
+
+        raise ValueError(f'Likelihood not recognised {self.likelihood}')
     
-    def model(self, Theta: NDArray[np.float64]) -> NDArray[np.float64]:
+    def model(
+            self,
+            Theta: NDArray[np.float64]
+    ) -> NDArray[np.float64] | tuple[NDArray[np.float64], NDArray[np.float64]]:
         '''
         The essential idea of to iterate over each ell, computing the multipole
         signal for that particular order. For example, if a user specifies
@@ -251,18 +327,25 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
                 multipole_latitudes=Theta[:, theta_idxs]
             )
         
-        if self.monopole_is_fitted:
-            mean_number_density = self._theta_param(Theta, 'M0')
-
-            if self.rms_map is None:
-                return mean_number_density[None, :] * signal
-            else:
-                rms_slope = self._theta_param(Theta, 'rms_slope')
-                rms_ratio = self.rms_map / self.rms_ref
-                rms_scaling = vectorised_rms_signal(rms_ratio, rms_slope)
-                return mean_number_density[None, :] * rms_scaling * signal
-        else:
+        if self.likelihood == 'point':
             return signal
+
+        mean_number_density = self._theta_param(Theta, 'M0')
+
+        if 'rms' in self.likelihood:
+            rms_slope = self._theta_param(Theta, 'rms_slope')
+            assert self.rms_map is not None
+            rms_ratio = self.rms_map / self.rms_ref
+            rms_scaling = vectorised_rms_signal(rms_ratio, rms_slope)
+            model_map = mean_number_density[None, :] * rms_scaling * signal
+        else:
+            model_map = mean_number_density[None, :] * signal
+
+        if 'general_poisson' in self.likelihood:
+            gp_dispersion = self._theta_param(Theta, 'gp_dispersion')
+            return (model_map, gp_dispersion)
+
+        return model_map
     
     def compute_multipole_signal(self,
             multipole_amplitudes: NDArray[np.float64],
