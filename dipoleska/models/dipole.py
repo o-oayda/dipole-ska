@@ -13,7 +13,7 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             prior: Prior | None = None,
             likelihood: Literal['point', 'poisson', 'poisson_rms',
                                 'general_poisson',
-                                'general_poisson+rms'] = 'point',
+                                'general_poisson_rms'] = 'point',
             rms_map: NDArray[np.float64] | None = None,
             fixed_dipole: tuple[float, float, float] | None = None
     ):
@@ -55,7 +55,7 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             - `'poisson_rms'` for the Poisson-based likelihood with 
                 RMS augmentation.
             - `'general_poisson'` for the generalised Poisson likelihood.
-            - `'general_poisson+rms'` for the generalised Poisson likelihood
+            - `'general_poisson_rms'` for the generalised Poisson likelihood
                 with RMS augmentation.
             As mentioned above, this choice will dynamically change the model
             dimensionality and the prior distributions.

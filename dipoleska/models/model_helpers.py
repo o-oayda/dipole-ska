@@ -171,7 +171,7 @@ class MapModelMixin:
 
     def _parse_likelihood_choice(self,
             likelihood: Literal['point', 'poisson', 'poisson_rms',
-                                'general_poisson', 'general_poisson+rms']
+                                'general_poisson', 'general_poisson_rms']
         ) -> None:
         '''
         If one specifies the point-by-point likelihood, we don't need to fit
