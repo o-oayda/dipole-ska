@@ -18,8 +18,10 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             ells: list[int],
             prior: Prior | None = None, 
             rms_map: NDArray[np.float64] | None = None,
-            likelihood: Literal['point', 'poisson', 'poisson_rms',
-                                'general_poisson', 'general_poisson_rms'] | None = None
+            likelihood: Literal[
+                'point', 'poisson', 'poisson_rms',
+                'general_poisson', 'general_poisson_rms'
+            ] | None = None
     ):
         '''
         Fit an abitrary number of monopoles of different orders.
@@ -69,7 +71,11 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         self.ells = ells
         self.multipole_orders = [ell for ell in ells if ell != 0]
         self._determine_likelihood(ells=ells, user_likelihood=likelihood)
-        self._setup_multipole_prior(ells=ells, prior=prior, likelihood=self.likelihood)
+        self._setup_multipole_prior(
+            ells=ells, 
+            prior=prior, 
+            likelihood=self.likelihood # pyright: ignore[reportArgumentType]
+        )
         
         self._parameter_names = self.prior.parameter_names
         self.ndim = self.prior.ndim
