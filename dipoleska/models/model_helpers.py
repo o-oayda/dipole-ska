@@ -3,6 +3,7 @@ import numpy as np
 from numpy.typing import NDArray
 from typing import Literal
 from scipy.stats import poisson
+from scipy.special import gammaln
 from abc import abstractmethod
 from dipoleska.models.priors import Prior
 from dipoleska.utils.math import rms_power_law_fit
@@ -59,6 +60,41 @@ class LikelihoodMixin:
             mu=rate_parameter
         )
         return np.sum(log_likelihood_map, axis=0)
+    
+    def general_poisson_log_likelihood(self,
+            model_output: tuple[NDArray[np.float64], NDArray[np.float64]],
+            density_map: NDArray[np.int_ | np.float64]
+    ) -> NDArray[np.float64]:
+        '''
+        Compute the vectorised log likelihood for many dipole maps using the
+        generalised Poisson likelihood function.
+
+        :param model_output: Tuple containing the outputs from the generalised
+            Poisson model. The first element is an array of rate parameters lambda,
+            standard for the Poisson distribuion, of shape (n_pixels, n_live).
+            The second is an array of generalised Poisson dispersion parameters b_GP
+            (see (24) in vonHausegger+25), of shape (n_live,). Thus the tuple is:
+            (lambda, b_GP).
+        :param density_map: Healpy density map of shape (n_pixels,).
+        :return: Log likelihood corresponding to each dipole signal of shape
+            (n_live,).
+        '''
+        rate_parameter, b = model_output
+        b = b[None, :]  #(1, n_live)
+
+        term1 = np.log(rate_parameter * (1 - b))                        
+        term2 = (density_map[:, None] - 1) * np.log(rate_parameter * (1 - b) + 
+                                                    density_map[:, None] * b)
+        term3 = gammaln(density_map + 1)[:, None]                      
+        term4 = rate_parameter * (1 - b)
+        term5 = density_map[:, None] * b
+
+        logL_pixels = term1 + term2 - term3 - term4 - term5  # (n_pixels, n_live)
+        
+        logL = np.sum(logL_pixels, axis=0)  # shape (n_live,)
+        
+        return logL
+
 
     def prior_transform(self,
             uniform_deviates: NDArray[np.float64]
@@ -136,7 +172,8 @@ class MapModelMixin:
             self._prior = prior
 
     def _parse_likelihood_choice(self,
-            likelihood: Literal['point', 'poisson', 'poisson_rms']
+            likelihood: Literal['point', 'poisson', 'poisson_rms',
+                                'general_poisson', 'general_poisson_rms']
         ) -> None:
         '''
         If one specifies the point-by-point likelihood, we don't need to fit
@@ -149,16 +186,23 @@ class MapModelMixin:
         itself. This automatically makes that change without needing explicit
         input from the user.
         
-        Finally, if one chooses the 'poisson_rms' likelihood, we fit for both
+        If one chooses the 'poisson_rms' likelihood, we fit for both
         the mean density and slope of the rms-power-law relation, and update
         the priors accordingly.
+        
+        Finally, if one chooses the 'general_poisson' likelihood, we add
+        an additional prior for the generalised Poisson parameter.
+        
+        Prior ordering will be: 
+        (mean_count, rms_slope (if applicable), gp_dispersion (if applicable), ....)
         '''
         self.likelihood = likelihood
-
+        
         if self.likelihood == 'point':
             self._prior.remove_prior(prior_indices=[0])
 
-        elif self.likelihood == 'poisson':
+        elif self.likelihood in ['poisson', 'poisson_rms',
+                                 'general_poisson', 'general_poisson_rms']:
             self._prior.change_prior(
                 prior_index=0,
                 new_prior=[
@@ -167,29 +211,46 @@ class MapModelMixin:
                     1.25 * self.mean_density
                 ]
             )
-
-        elif self.likelihood == 'poisson_rms':
-            assert self._rms_map is not None, (
-                "rms_map is required when using 'poisson_rms' likelihood"
-            )
-
-            self._prior.change_prior(
-                prior_index=0,
-                new_prior=[
-                    'Uniform',
-                    0.75 * self.rms_mean_density,
-                    1.25 * self.rms_mean_density
-                ]
-            )
-            self._prior.add_prior(
-                prior_index=1,
-                prior_name='rms_slope',
-                prior_alias=[
-                    'Uniform',
-                    0.75 * self.rms_slope,
-                    1.25 * self.rms_slope
-                ]
-            )
+            if self.likelihood in ['poisson_rms','general_poisson_rms']:
+                assert self._rms_map is not None, (
+                    f"rms_map must be provided when using "
+                    f"'{self.likelihood}' likelihood."
+                )
+                # if (
+                # self.likelihood in ['poisson_rms','general_poisson_rms']
+                # and 'rms_slope' not in getattr(model.prior, "prior_dict", {})
+                # ):
+                self._prior.add_prior(
+                    prior_index=1,
+                    prior_name='rms_slope',
+                    prior_alias=[
+                        'Uniform',
+                        0.75 * self.rms_slope,
+                        1.25 * self.rms_slope
+                    ]
+                )
+                
+            if self.likelihood == 'general_poisson':
+                # if (
+                # self.likelihood == 'general_poisson'
+                # and 'glb_param' not in getattr(model.prior, "prior_dict", {})
+                # ):
+                    self._prior.add_prior(
+                        prior_index=1,
+                        prior_name='gp_dispersion',
+                        prior_alias=['Uniform',0.,1.]
+                        )
+                
+            if self.likelihood == 'general_poisson_rms':
+                # if (
+                # self.likelihood == 'general_poisson_rms'
+                # and 'glb_param' not in getattr(model.prior, "prior_dict", {})
+                # ):
+                self._prior.add_prior(
+                    prior_index=2,
+                    prior_name='gp_dispersion',
+                    prior_alias=['Uniform',0.,1.]
+                    )
 
         else:
             raise Exception(
