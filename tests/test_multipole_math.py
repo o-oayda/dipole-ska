@@ -1,8 +1,17 @@
+import functools
 import itertools
 
 import numpy as np
 
-from dipoleska.utils.math import make_rankn_traceless, symmetrise_tensor
+from dipoleska.utils.math import (
+    make_rankn_traceless,
+    make_vectorised_outer_einstring,
+    make_vectorised_signal_einstring,
+    multipole_pixel_product_vectorised,
+    multipole_tensor_vectorised,
+    symmetrise_tensor,
+    vectorised_outer_product,
+)
 
 
 def test_symmetrise_tensor_matches_manual_average() -> None:
@@ -39,3 +48,71 @@ def test_make_rankn_traceless_is_symmetric_and_traceless() -> None:
         for axis2 in range(axis1 + 1, rank):
             contracted = np.trace(traceless_tensor, axis1=axis1, axis2=axis2)
             assert np.allclose(contracted, 0.0, atol=1e-10)
+
+
+def test_make_vectorised_outer_einstring_increments_letters() -> None:
+    assert make_vectorised_outer_einstring(1) == 'a...'
+    assert make_vectorised_outer_einstring(4) == 'a...,b...,c...,d...'
+
+
+def test_make_vectorised_signal_einstring_layout() -> None:
+    assert make_vectorised_signal_einstring(1) == 'ab,b...'
+    assert make_vectorised_signal_einstring(3) == 'abcd,b...,c...,d...'
+
+
+def test_vectorised_outer_product_matches_manual_outer() -> None:
+    n_live = 2
+    ell = 3
+    cartesian_vectors = np.arange(3 * n_live * ell, dtype=float).reshape(3, n_live, ell) / 5
+
+    tensor = vectorised_outer_product(cartesian_vectors)
+
+    expected = np.empty_like(tensor)
+    for sample in range(n_live):
+        vectors = [cartesian_vectors[:, sample, idx] for idx in range(ell)]
+        manual = functools.reduce(np.multiply.outer, vectors)
+        expected[sample] = manual
+
+    np.testing.assert_allclose(tensor, expected)
+
+
+def test_multipole_tensor_vectorised_matches_manual_pipeline() -> None:
+    ell = 2
+    n_live = 2
+    amplitudes = np.array([0.5, 2.0])
+    cart_vectors = np.zeros((3, n_live, ell))
+    cart_vectors[:, 0, 0] = [1.0, 0.0, 0.0]
+    cart_vectors[:, 0, 1] = [0.0, 1.0, 0.0]
+    cart_vectors[:, 1, 0] = [0.0, 0.0, 1.0]
+    cart_vectors[:, 1, 1] = [1.0, 1.0, 1.0]
+
+    tensor = multipole_tensor_vectorised(amplitudes, cart_vectors)
+
+    expected = []
+    for idx in range(n_live):
+        vectors = [cart_vectors[:, idx, j] for j in range(ell)]
+        raw = functools.reduce(np.multiply.outer, vectors)
+        sym = symmetrise_tensor(raw)
+        stf = make_rankn_traceless(sym)
+        expected.append(amplitudes[idx] * stf)
+    expected = np.asarray(expected)
+
+    np.testing.assert_allclose(tensor, expected)
+
+
+def test_multipole_pixel_product_vectorised_matches_manual() -> None:
+    ell = 2
+    multipole_tensors = np.arange(18, dtype=float).reshape(2, 3, 3) / 7
+    pixel_vectors = np.arange(12, dtype=float).reshape(3, 4) / 3
+
+    signal = multipole_pixel_product_vectorised(multipole_tensors, pixel_vectors, ell=ell)
+
+    n_pix = pixel_vectors.shape[1]
+    n_live = multipole_tensors.shape[0]
+    expected = np.zeros((n_pix, n_live))
+    for pix in range(n_pix):
+        vec = pixel_vectors[:, pix]
+        for sample in range(n_live):
+            expected[pix, sample] = vec @ multipole_tensors[sample] @ vec
+
+    np.testing.assert_allclose(signal, expected)
