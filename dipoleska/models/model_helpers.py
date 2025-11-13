@@ -69,10 +69,12 @@ class LikelihoodMixin:
         Compute the vectorised log likelihood for many dipole maps using the
         generalised Poisson likelihood function.
 
-        :param rate_parameter: Array of rate parameters for each cell; of
-            shape (n_pixels, n_live).
-        :param b: Array of generalised Poisson global for each live point; of 
-            shape (n_live,).
+        :param model_output: Tuple containing the outputs from the generalised
+            Poisson model. The first element is an array of rate parameters lambda,
+            standard for the Poisson distribuion, of shape (n_pixels, n_live).
+            The second is an array of generalised Poisson dispersion parameters b_GP
+            (see (24) in vonHausegger+25), of shape (n_live,). Thus the tuple is:
+            (lambda, b_GP).
         :param density_map: Healpy density map of shape (n_pixels,).
         :return: Log likelihood corresponding to each dipole signal of shape
             (n_live,).
@@ -192,16 +194,10 @@ class MapModelMixin:
         an additional prior for the generalised Poisson parameter.
         
         Prior ordering will be: 
-        (mean_count, rms_slope (if applicable), glb_param (if applicable), ....)
+        (mean_count, rms_slope (if applicable), gp_dispersion (if applicable), ....)
         '''
         self.likelihood = likelihood
         
-        if self.likelihood in ['poisson_rms', 'general_poisson_rms']:
-            assert self._rms_map is not None, (
-                f"rms_map must be provided when using "
-                f"'{self.likelihood}' likelihood."
-            )
-
         if self.likelihood == 'point':
             self._prior.remove_prior(prior_indices=[0])
 
@@ -216,19 +212,23 @@ class MapModelMixin:
                 ]
             )
             if self.likelihood in ['poisson_rms','general_poisson_rms']:
+                assert self._rms_map is not None, (
+                    f"rms_map must be provided when using "
+                    f"'{self.likelihood}' likelihood."
+                )
                 # if (
                 # self.likelihood in ['poisson_rms','general_poisson_rms']
                 # and 'rms_slope' not in getattr(model.prior, "prior_dict", {})
                 # ):
-                    self._prior.add_prior(
-                        prior_index=1,
-                        prior_name='rms_slope',
-                        prior_alias=[
-                            'Uniform',
-                            0.75 * self.rms_slope,
-                            1.25 * self.rms_slope
-                        ]
-                    )
+                self._prior.add_prior(
+                    prior_index=1,
+                    prior_name='rms_slope',
+                    prior_alias=[
+                        'Uniform',
+                        0.75 * self.rms_slope,
+                        1.25 * self.rms_slope
+                    ]
+                )
                 
             if self.likelihood == 'general_poisson':
                 # if (
@@ -237,7 +237,7 @@ class MapModelMixin:
                 # ):
                     self._prior.add_prior(
                         prior_index=1,
-                        prior_name='glb_param',
+                        prior_name='gp_dispersion',
                         prior_alias=['Uniform',0.,1.]
                         )
                 
@@ -248,7 +248,7 @@ class MapModelMixin:
                 # ):
                 self._prior.add_prior(
                     prior_index=2,
-                    prior_name='glb_param',
+                    prior_name='gp_dispersion',
                     prior_alias=['Uniform',0.,1.]
                     )
 

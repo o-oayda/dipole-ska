@@ -22,7 +22,7 @@ _PARAMETER_LATEX_MAP: dict[str, str] = {
     'D': r'\mathcal{D}_{\mathrm{EB}}',
     'Nbar': r'\bar{N}_{\mathrm{sources}}',
     'rms_slope': r'x_{\mathrm{RMS}}',
-    'glb_param': r'b_{\mathrm{gp}}',
+    'gp_dispersion': r'b_{\mathrm{GP}}',
 }
 
 ANGLE_LABEL_OVERRIDES: dict[str, dict[str, dict[str, str]]] = {
