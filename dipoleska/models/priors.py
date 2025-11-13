@@ -104,6 +104,7 @@ class Prior:
         self.prior_transforms.insert(prior_index, new_callable)
         self.parameter_names.insert(prior_index, prior_name)
         self.ndim += 1
+        self._name_to_index = {name: idx for idx, name in enumerate(self.parameter_names)}
 
         # Maintain `prior_dict` ordering so future operations stay consistent.
         prior_items = list(self.prior_dict.items())
@@ -124,6 +125,7 @@ class Prior:
             self.prior_transforms.pop(prior_index)
             self.parameter_names.pop(prior_index)
             self.ndim -= 1
+        self._name_to_index = {name: idx for idx, name in enumerate(self.parameter_names)}
 
     def plot_priors(self) -> None:
         '''
@@ -182,6 +184,7 @@ class Prior:
         self.parameter_names = list(self.prior_dict.keys())
         self.ndim = len(self.parameter_names)
         self.prior_transforms = []
+        self._name_to_index = {name: idx for idx, name in enumerate(self.parameter_names)}
         
         for value in self.prior_dict.values():
             
@@ -257,6 +260,14 @@ class Prior:
             minimum=prior_alias[1],
             maximum=prior_alias[2]
         )
+
+    def index_for(self, name: str) -> int:
+        if name not in self._name_to_index:
+            raise KeyError(f'Parameter "{name}" not found in prior.')
+        return self._name_to_index[name]
+
+    def optional_index_for(self, name: str) -> int | None:
+        return self._name_to_index.get(name)
     
     def _construct_callable(self,
             callable_prior_function: Callable,

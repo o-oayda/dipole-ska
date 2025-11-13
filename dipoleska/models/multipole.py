@@ -26,27 +26,17 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         :param prior:
             Pass either an instance of a Prior object or leave as None.
 
-            If None is specified, the model dynamically creates a prior, taking
-            into account the number of amplitudes and multipole unit vectors
-            needed. Additionally, if a monopole is specified in the ells kwarg,
-            the Poissonian likelihood is used and the prior on the monopole
-            amplitude is automatically updated to a uniform distribuion 25%
-            either side of the mean of the density map.
-
-            NOTE: When passing a custom prior, the dictionary must obey a
-            certain order and be named a certain way. The order should keep
-            amplitudes first, then unit vectors second. For example, if one
-            fits `ell = [0, 1, 2]`, the order of keys passed to Prior at
-            instantiation should be
-            `{'M0', 'M1', 'M2', 'phi_l1_0', 'theta_l1_0', 'phi_l2_0',
-            'theta_l2_0', 'phi_l2_1', 'theta_l1_1'}`.
-            Note that the amplitudes are first, with `M0` referring to the
-            monopole amplitude, etc. Also, for each multipole unit vector,
-            we have phi_lX_Y. X should be the order of the multipole for which
-            this unit vector applies; l1 would refer to the single dipole
-            vector. Y refers to the vector number; a quadrupole with two
-            multipole unit vectors would have two vectors, indexed by Y=0 and
-            Y=1.
+            - If ``None`` is specified, the model constructs a default prior
+              covering every amplitude ``Mℓ`` and the ``2ℓ`` angular parameters
+              for each multipole order in ``ells``. The recognised names are:
+                * ``Mℓ`` for each amplitude (e.g. ``M0``, ``M1``, ``M2``)
+                * ``phi_lℓ_k`` / ``theta_lℓ_k`` for the ``k``-th unit vector of
+                  order ``ℓ`` (e.g. ``phi_l2_1``, ``theta_l3_0``)
+            - If a Prior instance is supplied, any matching names override the
+              defaults while unsupplied parameters keep their built-in
+              distributions. Names must follow the convention above;
+              unrecognised names raise a ValueError. Ordering is irrelevant, as
+              parameters are accessed by name internally.
         :param ells:
             Pass a list of multipole orders to fit, e.g. `ells = [1, 2, 3]`.
             If a monopole (0) is specified in the list, the Poissonian
@@ -60,8 +50,10 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
                 judging from the fiducial map integration test.
         '''
         self._get_healpy_map_attributes(density_map)
-        self._construct_multipole_priors(ells, prior)
         self._get_rms_fit_parameters(rms_map)
+        self.ells = ells
+        self.multipole_orders = [ell for ell in ells if ell != 0]
+        self._setup_multipole_prior(ells=ells, prior=prior)
         
         # if we are fitting a monopole (ell=0), adjust the monopole prior to center
         # around the mean number density; otherwise, for point-by-point, the
@@ -82,45 +74,71 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
 
         self._parameter_names = self.prior.parameter_names
         self.ndim = self.prior.ndim
-        self.n_multipoles = len(ells)
+        self.n_multipoles = len(self.multipole_orders)
+        self._cache_parameter_indices()
         self._get_angle_indices()
     
-    def _construct_multipole_priors(self,
+    def _setup_multipole_prior(
+            self,
             ells: list[int],
-            prior: Prior | None = None
+            prior: Prior | None
     ) -> None:
+        '''
+        Build priors for arbitrary ells, allowing user-specified entries to
+        override default choices.
+        '''
+        default_prior_dict = self._default_multipole_prior_aliases(ells)
+
         if prior is None:
-            azimuthal_priors = ['Uniform', 0., 2 * np.pi]
-            polar_priors = ['Polar', 0., np.pi]
-            amplitude_priors = ['Uniform', 0., 0.1]
-            monopole_priors = ['Uniform', 0., 0.] # placeholder: is replaced later
-            all_amplitude_priors = {}
-            all_angle_priors = {}
-            
-            for ell in ells:    
-                if ell == 0:
-                    label = 'M0'
-                    all_amplitude_priors[label] = monopole_priors
-                
-                else:
-                    amplitude_label = f'M{ell}'
-                    prior_list = amplitude_priors.copy()
-                    prior_list[-1] = prior_list[-1] * ell ** 2 # naively scale prior range by ell^2
-                    all_amplitude_priors[amplitude_label] = prior_list
+            self._log_prior_sources('Multipole', default_prior_dict, overrides={})
+            self._prior = Prior(choose_prior=default_prior_dict)
+            return
 
-                    # for each ell with amplitude M_ell, add the 2*ell unit vector priors
-                    for i in range(2 * ell):
-                        subscript = f'l{ell}_{i//2}'
+        assert hasattr(prior, 'prior_dict'), (
+            'Custom priors must expose a prior_dict attribute.'
+        )
+        user_dict = prior.prior_dict
+        unknown = sorted(set(user_dict) - set(default_prior_dict))
+        if unknown:
+            raise ValueError(
+                'Unrecognised prior parameter(s) for Multipole model: '
+                + ', '.join(unknown)
+            )
 
-                        if i % 2 == 0:
-                            all_angle_priors[f'phi_{subscript}'] = azimuthal_priors
-                        else:
-                            all_angle_priors[f'theta_{subscript}'] = polar_priors
-            
-            all_priors = {**all_amplitude_priors, **all_angle_priors}
-            self._prior = Prior(choose_prior=all_priors)
-        else:
-            self._prior = prior
+        merged = default_prior_dict.copy()
+        merged.update(user_dict)
+        self._log_prior_sources('Multipole', merged, user_dict)
+
+        self._prior = Prior(choose_prior=merged)
+
+    def _default_multipole_prior_aliases(
+            self,
+            ells: list[int]
+    ) -> dict[str, list[float | np.floating | str]]:
+        azimuthal = ['Uniform', 0.0, 2 * np.pi]
+        polar = ['Polar', 0.0, np.pi]
+        priors: dict[str, list[float | np.floating | str]] = {}
+
+        for ell in ells:
+            amplitude_name = f'M{ell}'
+            if ell == 0:
+                priors[amplitude_name] = [
+                    'Uniform',
+                    0.75 * self.mean_density,
+                    1.25 * self.mean_density
+                ]
+            else:
+                priors[amplitude_name] = ['Uniform', 0.0, 0.1 * ell ** 2]
+
+        for ell in ells:
+            if ell == 0:
+                continue
+            for vec_idx in range(ell):
+                priors[f'phi_l{ell}_{vec_idx}'] = azimuthal.copy()
+                priors[f'theta_l{ell}_{vec_idx}'] = polar.copy()
+
+        return priors
+
 
     def _get_angle_indices(self):
         self.phi_indices = defaultdict(list)
@@ -215,16 +233,13 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         signal, then the octupole signal, summing them cumulatively.
         '''
         nlive = Theta.shape[0]
-        if self.monopole_is_fitted: 
-            if self.rms_map is None:
-                # exclude first params, which will be Nbar
-                amplitude_like = Theta[:, 1:self.n_multipoles]
-            else:
-                # the rms slope param gets fanged into index 1 by convention
-                # not great practice, but will do for now
-                amplitude_like = Theta[:, 2:self.n_multipoles+1]
+        if self.multipole_orders:
+            amplitude_like = np.column_stack([
+                self._theta_param(Theta, f'M{ell}')
+                for ell in self.multipole_orders
+            ])
         else:
-            amplitude_like = Theta[:, :self.n_multipoles]
+            amplitude_like = np.zeros((nlive, 0))
         
         signal = np.ones((self.n_unmasked, nlive))
         for i, ((ell, phi_idxs), (ell, theta_idxs)) in enumerate(
@@ -237,12 +252,12 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             )
         
         if self.monopole_is_fitted:
-            mean_number_density = Theta[:, 0]
+            mean_number_density = self._theta_param(Theta, 'M0')
 
             if self.rms_map is None:
                 return mean_number_density[None, :] * signal
             else:
-                rms_slope = Theta[:, 1]    
+                rms_slope = self._theta_param(Theta, 'rms_slope')
                 rms_ratio = self.rms_map / self.rms_ref
                 rms_scaling = vectorised_rms_signal(rms_ratio, rms_slope)
                 return mean_number_density[None, :] * rms_scaling * signal
@@ -312,4 +327,14 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
                 pixel_vectors=self.pixel_vectors_xyz,
                 ell=multipole_longitudes.shape[-1]
             )
-            return multipole_signal
+        return multipole_signal
+
+    def _cache_parameter_indices(self) -> None:
+        self._parameter_indices = {
+            name: self.prior.index_for(name)
+            for name in self.prior.parameter_names
+        }
+
+    def _theta_param(self, Theta: NDArray[np.float64], name: str) -> NDArray[np.float64]:
+        idx = self._parameter_indices[name]
+        return Theta[:, idx]

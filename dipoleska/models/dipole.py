@@ -29,24 +29,20 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             which are then automatically masked for the likelihood evaluation.
         :param prior:
             Pass either an instance of a Prior object or leave as None.
-            
-            If no class is specified, the prior uses default dipole priors.
-            These priors are specified in `models/default_priors.py`, with the
-            following key exceptions:
-            - if the Poisson likelihood is specified, the prior on the mean count
-            parameter N will be automatically updated to a uniform distribution
-            25% either side of the mean of the density map.
-            - if the Poisson-RMS likelihood is specified, the prior will be
-            updated to include both the mean count parameter N (with
-            a uniform distribution 25% either side of the mean) and the
-            RMS slope parameter (with a uniform distribution 25% either 
-            side of the mean).
-            If using a custom prior, the rms_slope parameter should appear at
-            index 1 for now.
 
-            In addition, if one specifies the point-by-point likelihood,
-            the mean count parameter N is removed from the prior distribution
-            and the dimensionality of the model is therefore reduced by 1.
+            - If ``None`` is provided, the model builds a likelihood-specific
+              default prior using the canonical parameter names below:
+                * ``Nbar`` — mean count (Poisson/General Poisson likelihoods)
+                * ``rms_slope`` — RMS scaling slope (``*_rms`` likelihoods)
+                * ``gp_dispersion`` — generalised Poisson dispersion
+                * ``D`` — dipole amplitude
+                * ``phi`` — dipole longitude
+                * ``theta`` — dipole colatitude
+            - If a Prior instance is supplied, any matching names override the
+              defaults while unsupplied parameters retain these built-in choices.
+              Parameter names must come from the list above; unrecognised names
+              raise a ValueError. No ordering constraints apply—parameters are
+              accessed by name internally.
         :param likelihood:
             Specify the type of likelihood function to use at inference:
             
@@ -70,11 +66,11 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             plus a free (fitted) dipole.
         '''
         self._get_healpy_map_attributes(density_map)
-        self._parse_prior_choice(default_prior='dipole', prior=prior)
-        self._get_rms_fit_parameters(rms_map) 
-        self._parse_likelihood_choice(likelihood)
+        self._get_rms_fit_parameters(rms_map)
+        self._setup_dipole_prior(prior=prior, likelihood=likelihood)
         self._parameter_names = self.prior.parameter_names
         self.ndim = self.prior.ndim
+        self._cache_parameter_indices()
         if fixed_dipole is not None:
             self.fixed_dipole = np.asarray(fixed_dipole)
         else:
@@ -158,6 +154,104 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
                 f'Likelihood not recognised {self.likelihood}'
             )
 
+    def _cache_parameter_indices(self) -> None:
+        '''
+        Cache parameter indices for fast lookup from Theta by name.
+        '''
+        self._parameter_indices = {
+            name: self.prior.index_for(name)
+            for name in self.prior.parameter_names
+        }
+
+    def _theta_param(self, Theta: NDArray[np.float64], name: str) -> NDArray[np.float64]:
+        idx = self._parameter_indices[name]
+        return Theta[:, idx]
+
+    def _optional_theta_param(
+            self,
+            Theta: NDArray[np.float64],
+            name: str
+    ) -> NDArray[np.float64] | None:
+        idx = self._parameter_indices.get(name)
+        if idx is None:
+            return None
+        return Theta[:, idx]
+
+    def _setup_dipole_prior(
+            self,
+            prior: Prior | None,
+            likelihood: Literal['point', 'poisson', 'poisson_rms',
+                                'general_poisson', 'general_poisson_rms']
+    ) -> None:
+        '''
+        Build the prior dictionary for the requested likelihood, allowing
+        user-specified priors to override individual parameters while falling
+        back to defaults for everything else.
+        '''
+        if likelihood in ['poisson_rms', 'general_poisson_rms']:
+            assert self._rms_map is not None, (
+                f"rms_map must be provided when using '{likelihood}' likelihood."
+            )
+
+        self.likelihood = likelihood
+        default_prior_dict = self._default_prior_aliases(likelihood=likelihood)
+
+        if prior is None:
+            self._log_prior_sources('Dipole', default_prior_dict, overrides={})
+            self._prior = Prior(choose_prior=default_prior_dict)
+            return
+
+        assert hasattr(prior, 'prior_dict'), (
+            'Custom priors must expose a prior_dict attribute.'
+        )
+        user_dict = prior.prior_dict
+        unknown = sorted(set(user_dict) - set(default_prior_dict))
+        if unknown:
+            raise ValueError(
+                'Unrecognised prior parameter(s) for Dipole model: '
+                + ', '.join(unknown)
+            )
+
+        merged = default_prior_dict.copy()
+        merged.update(user_dict)
+        self._log_prior_sources('Dipole', merged, user_dict)
+
+        self._prior = Prior(choose_prior=merged)
+
+    def _default_prior_aliases(
+            self,
+            likelihood: Literal['point', 'poisson', 'poisson_rms',
+                                'general_poisson', 'general_poisson_rms']
+    ) -> dict[str, list[float | np.floating | str]]:
+        '''
+        Assemble the default prior dictionary for the requested likelihood.
+        '''
+        defaults: dict[str, list[float | np.floating | str]] = {}
+        if likelihood != 'point':
+            defaults['Nbar'] = [
+                'Uniform',
+                0.75 * self.mean_density,
+                1.25 * self.mean_density
+            ]
+
+        if 'rms' in likelihood:
+            defaults['rms_slope'] = [
+                'Uniform',
+                0.75 * self.rms_slope,
+                1.25 * self.rms_slope
+            ]
+
+        if 'general_poisson' in likelihood:
+            defaults['gp_dispersion'] = ['Uniform', 0.0, 1.0]
+
+        defaults.update({
+            'D': ['Uniform', 0.0, 0.1],
+            'phi': ['Uniform', 0.0, 2 * np.pi],
+            'theta': ['Polar', 0.0, np.pi]
+        })
+        return defaults
+
+
     def model(self,
             Theta: NDArray[np.float64]
     ) -> NDArray[np.float64] | tuple[NDArray[np.float64], NDArray[np.float64]]:
@@ -168,9 +262,9 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         :return: Vectorised evaluation of 1 + D cos(theta), of shape
             (n_pix, n_live).
         '''
-        dipole_amplitude = Theta[:, -3]
-        dipole_longitude = Theta[:, -2]
-        dipole_colatitude = Theta[:, -1]
+        dipole_amplitude = self._theta_param(Theta, 'D')
+        dipole_longitude = self._theta_param(Theta, 'phi')
+        dipole_colatitude = self._theta_param(Theta, 'theta')
 
         dipole_signal = compute_dipole_signal(
             dipole_amplitude=dipole_amplitude,
@@ -197,18 +291,18 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             return 1 + dipole_signal
         
         if self.likelihood in ['poisson', 'general_poisson']:
-            mean_count = Theta[:, 0]
+            mean_count = self._theta_param(Theta, 'Nbar')
             model_map = mean_count * (1 + dipole_signal)
 
             if self.likelihood == 'general_poisson':
-                gp_disperson = Theta[:, 1]
+                gp_disperson = self._theta_param(Theta, 'gp_dispersion')
                 return (model_map, gp_disperson)
             else:
                 return model_map
         
         if self.likelihood in ['poisson_rms', 'general_poisson_rms']:
-            mean_count = Theta[:, 0]
-            rms_slope = Theta[:, 1]
+            mean_count = self._theta_param(Theta, 'Nbar')
+            rms_slope = self._theta_param(Theta, 'rms_slope')
             
             assert self.rms_map is not None
             rms_ratio = self.rms_map / self.rms_ref
@@ -218,7 +312,7 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             model_map = mean_count[None, :] * rms_scaling * (1 + dipole_signal)
 
             if self.likelihood == 'general_poisson_rms':
-                gp_disperson = Theta[:, 2]
+                gp_disperson = self._theta_param(Theta, 'gp_dispersion')
                 return (model_map, gp_disperson)
             else:
                 return model_map
