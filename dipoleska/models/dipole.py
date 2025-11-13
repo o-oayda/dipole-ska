@@ -29,24 +29,20 @@ class Dipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
             which are then automatically masked for the likelihood evaluation.
         :param prior:
             Pass either an instance of a Prior object or leave as None.
-            
-            If no class is specified, the prior uses default dipole priors.
-            These priors are specified in `models/default_priors.py`, with the
-            following key exceptions:
-            - if the Poisson likelihood is specified, the prior on the mean count
-            parameter N will be automatically updated to a uniform distribution
-            25% either side of the mean of the density map.
-            - if the Poisson-RMS likelihood is specified, the prior will be
-            updated to include both the mean count parameter N (with
-            a uniform distribution 25% either side of the mean) and the
-            RMS slope parameter (with a uniform distribution 25% either 
-            side of the mean).
-            If using a custom prior, the rms_slope parameter should appear at
-            index 1 for now.
 
-            In addition, if one specifies the point-by-point likelihood,
-            the mean count parameter N is removed from the prior distribution
-            and the dimensionality of the model is therefore reduced by 1.
+            - If ``None`` is provided, the model builds a likelihood-specific
+              default prior using the canonical parameter names below:
+                * ``Nbar`` — mean count (Poisson/General Poisson likelihoods)
+                * ``rms_slope`` — RMS scaling slope (``*_rms`` likelihoods)
+                * ``gp_dispersion`` — generalised Poisson dispersion
+                * ``D`` — dipole amplitude
+                * ``phi`` — dipole longitude
+                * ``theta`` — dipole colatitude
+            - If a Prior instance is supplied, any matching names override the
+              defaults while unsupplied parameters retain these built-in choices.
+              Parameter names must come from the list above; unrecognised names
+              raise a ValueError. No ordering constraints apply—parameters are
+              accessed by name internally.
         :param likelihood:
             Specify the type of likelihood function to use at inference:
             
