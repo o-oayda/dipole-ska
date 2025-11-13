@@ -749,13 +749,6 @@ function to this method when instantiating from an ultranest run number.'''
         handles = existing_handles
         labels_list = existing_labels
 
-        if save_path is not None:
-            plt.savefig(
-                save_path,
-                bbox_inches='tight',
-                dpi=300
-            )
-
         def _format_angle_descriptor(param_name: str) -> str:
             '''Small helper to populate legend with which colour corresponds
             to which unit vector.'''
@@ -848,6 +841,13 @@ function to this method when instantiating from an ultranest run number.'''
                 labels_list.append(pair_label)
 
         ax.legend(handles=handles, labels=labels_list, loc='upper right')
+
+        if save_path is not None:
+            plt.savefig(
+                save_path,
+                bbox_inches='tight',
+                dpi=300
+            )
     
     def _make_transparent_colour_map(self,
                 colour: str
