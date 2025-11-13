@@ -41,6 +41,8 @@ class InferenceMixin:
     def run_nested_sampling(self,
             step: bool = False,
             n_steps: int | None = None,
+            output_dir: str = 'ultranest_logs',
+            run_num: int | None = None,
             reactive_sampler_kwargs: dict = {},
             run_kwargs: dict = {}
         ) -> None:
@@ -60,9 +62,10 @@ class InferenceMixin:
             loglike=self.log_likelihood,
             transform=self.prior_transform,
             **{
-                'log_dir': 'ultranest_logs',
+                'log_dir': output_dir,
                 'resume': 'subfolder',
                 'vectorized': True,
+                'run_num': run_num,
                 **reactive_sampler_kwargs
             }
         )
