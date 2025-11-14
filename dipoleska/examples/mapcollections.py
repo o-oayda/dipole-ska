@@ -39,14 +39,11 @@ loader = MapCollectionLoader(
 data = loader.map_collections
 
 dmap = data['counts']
-processor = MapProcessor(dmap)
-processor.mask(output_frame='C', load_from_file='gal10_ps')
-masked_dmap = processor.density_map
 
 rmsmap = data['rms']
-processor = MapProcessor(rmsmap)
+processor = MapProcessor([dmap, rmsmap])
 processor.mask(output_frame='C', load_from_file='gal10_ps')
-masked_rmsmap = processor.density_map
+masked_dmap, masked_rmsmap = processor.density_maps
 
 if plot_enabled:
     plotter = MapPlotter(masked_dmap)
