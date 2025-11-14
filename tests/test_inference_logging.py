@@ -42,11 +42,11 @@ def test_inference_writes_prior_log(tmp_path: Path) -> None:
 
     model._write_prior_log()
 
-    log_file = run_dir / "dipoleska_prior.log"
+    log_file = run_dir / "dipoleska_run_info.log"
     assert log_file.exists()
     contents = log_file.read_text()
-    assert 'DummyModel prior configuration' in contents
+    assert '[DummyModel] Prior configuration:' in contents
     assert 'Likelihood: point' in contents
     assert 'nside=1' in contents
     assert 'unmasked_pixels=12' in contents
-    assert 'A: [\'Uniform\', 0.0, 1.0]' in contents
+    assert 'A: [Uniform, 0, 1]' in contents

@@ -7,6 +7,7 @@ from abc import abstractmethod
 from numpy.typing import NDArray
 import ultranest.stepsampler
 import numpy as np
+from dipoleska.models.model_helpers import MapModelMixin
 
 class InferenceMixin:
     '''
@@ -58,8 +59,8 @@ class InferenceMixin:
         :param output_dir: Base directory for UltraNest outputs. Each run
             creates a `run_<n>` subdirectory here (when `resume='subfolder'`,
             the default) unless ``run_name`` is provided.
-            A `dipoleska_prior.log` file describing the prior configuration is
-            also written into that subdirectory.
+            A `dipoleska_run_info.log` file describing the prior configuration
+            is also written into that subdirectory.
         :param run_num: Explicit UltraNest run number to use when
             `resume='subfolder'`. If None (default), UltraNest auto-increments.
         :param run_name: Optional custom folder name (relative to
@@ -72,12 +73,16 @@ class InferenceMixin:
         '''
         log_dir_override = None
         resume_mode = 'subfolder'
+        self._last_run_name = None
+        self._prior_overrides = {}
+
         if run_name is not None:
             if not run_name.strip():
                 raise ValueError('run_name, if provided, must be non-empty.')
             resume_mode = 'overwrite'
             log_dir_override = os.path.join(output_dir, run_name)
             os.makedirs(log_dir_override, exist_ok=True)
+            self._last_run_name = run_name
 
         self.ultranest_sampler = ultranest.ReactiveNestedSampler(
             param_names=self.parameter_names,
@@ -174,7 +179,7 @@ class InferenceMixin:
 
         prior_dict = prior.prior_dict
         os.makedirs(run_dir, exist_ok=True)
-        logfile = os.path.join(run_dir, 'dipoleska_prior.log')
+        logfile = os.path.join(run_dir, 'dipoleska_run_info.log')
 
         formatter = getattr(self, '_format_alias', None)
         def format_alias(alias):
@@ -182,12 +187,11 @@ class InferenceMixin:
                 return formatter(alias)
             return str(alias)
 
-        lines = [
-            f'{self.__class__.__name__} prior configuration',
-            '-' * 40
-        ]
+        lines = [f'{self.__class__.__name__} run metadata', '-' * 40]
+        custom_name = getattr(self, '_last_run_name', None)
+        if custom_name:
+            lines.append(f'Run name: {custom_name}')
 
-        # basic run metadata when available
         likelihood = getattr(self, 'likelihood', None)
         if likelihood is not None:
             lines.append(f'Likelihood: {likelihood}')
@@ -202,8 +206,11 @@ class InferenceMixin:
             lines.append('Map info: ' + ', '.join(map_meta))
         lines.append('')
 
-        for name, alias in prior_dict.items():
-            lines.append(f'{name}: {format_alias(alias)}')
+        lines.extend(MapModelMixin._prior_configuration_lines(
+            model_label=self.__class__.__name__,
+            merged=prior_dict,
+            overrides=getattr(self, '_prior_overrides', {}),
+        ))
         lines.append('')
 
         with open(logfile, 'w', encoding='utf-8') as handle:
