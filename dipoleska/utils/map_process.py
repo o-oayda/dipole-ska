@@ -47,6 +47,14 @@ class MapProcessor:
         ``np.nan``.
         '''
         return [self._apply_mask(m) for m in self._density_maps]
+    
+    @property
+    def get_mask(self) -> NDArray[np.int_]:
+        '''
+        Return the current mask as an integer array (1 for unmasked pixels,
+        0 for masked pixels).
+        '''
+        return self.masked_map.copy()
 
     def _apply_mask(self, map_in: NDArray[np.int_]) -> NDArray[np.float64]:
         out_map = map_in.astype(np.float64)
