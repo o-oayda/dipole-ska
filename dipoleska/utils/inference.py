@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Any, cast
 import ultranest
 import sys
@@ -53,9 +54,16 @@ class InferenceMixin:
         :param step: Specify whether or not to use the random step method.
         :param n_steps: If the random step method is specified, this is the
             number of steps as used by `SliceSampler`.
-        :param reactive_sampler_kwargs: Keyword arguments for the
-            `ReactiveNestedSampler`.
-        :param run_kwargs: Keyword arguments for the sampler's run method.
+        :param output_dir: Base directory for UltraNest outputs. Each run
+            creates a `run_<n>` subdirectory here (when `resume='subfolder'`).
+            A `dipoleska_prior.log` file describing the prior configuration is
+            also written into that subdirectory.
+        :param run_num: Explicit UltraNest run number to use when
+            `resume='subfolder'`. If None (default), UltraNest auto-increments.
+        :param reactive_sampler_kwargs: Extra keyword arguments forwarded to
+            ``ultranest.ReactiveNestedSampler``.
+        :param run_kwargs: Keyword arguments forwarded to
+            ``ReactiveNestedSampler.run``.
         '''
         self.ultranest_sampler = ultranest.ReactiveNestedSampler(
             param_names=self.parameter_names,
@@ -75,6 +83,7 @@ class InferenceMixin:
         
         self.results = self.ultranest_sampler.run(**run_kwargs)
         self.ultranest_sampler.print_results()
+        self._write_prior_log()
 
         # there is an issue with ultranest plotting when the log likelihood is
         # very negative (e.g. for the point-by-point likelihood)
@@ -132,3 +141,56 @@ class InferenceMixin:
         unest_logger.addHandler(unest_handler)
         unest_logger.setLevel(logging.WARN)
 
+    def _write_prior_log(self) -> None:
+        '''
+        Write a simple log file inside the current UltraNest run directory
+        enumerating the prior configuration used for this run.
+        '''
+        sampler_logs = getattr(self.ultranest_sampler, 'logs', None)
+        if not isinstance(sampler_logs, dict):
+            return
+
+        run_dir = sampler_logs.get('run_dir')
+        if not run_dir:
+            return
+
+        prior = getattr(self, 'prior', None)
+        if prior is None or not hasattr(prior, 'prior_dict'):
+            return
+
+        prior_dict = prior.prior_dict
+        os.makedirs(run_dir, exist_ok=True)
+        logfile = os.path.join(run_dir, 'dipoleska_prior.log')
+
+        formatter = getattr(self, '_format_alias', None)
+        def format_alias(alias):
+            if callable(formatter):
+                return formatter(alias)
+            return str(alias)
+
+        lines = [
+            f'{self.__class__.__name__} prior configuration',
+            '-' * 40
+        ]
+
+        # basic run metadata when available
+        likelihood = getattr(self, 'likelihood', None)
+        if likelihood is not None:
+            lines.append(f'Likelihood: {likelihood}')
+        map_meta = []
+        nside = getattr(self, 'nside', None)
+        if nside is not None:
+            map_meta.append(f'nside={nside}')
+        n_unmasked = getattr(self, 'n_unmasked', None)
+        if n_unmasked is not None:
+            map_meta.append(f'unmasked_pixels={n_unmasked}')
+        if map_meta:
+            lines.append('Map info: ' + ', '.join(map_meta))
+        lines.append('')
+
+        for name, alias in prior_dict.items():
+            lines.append(f'{name}: {format_alias(alias)}')
+        lines.append('')
+
+        with open(logfile, 'w', encoding='utf-8') as handle:
+            handle.write('\n'.join(lines))

@@ -143,11 +143,26 @@ class MapModelMixin:
             merged: dict[str, list[float | np.floating | str]],
             overrides: dict[str, list[float | np.floating | str]]
     ) -> None:
+        lines = MapModelMixin._prior_configuration_lines(
+            model_label=model_label,
+            merged=merged,
+            overrides=overrides
+        )
+        print('\n'.join(lines))
+
+    @staticmethod
+    def _prior_configuration_lines(
+            model_label: str,
+            merged: dict[str, list[float | np.floating | str]],
+            overrides: dict[str, list[float | np.floating | str]]
+    ) -> list[str]:
         lines = [f'[{model_label}] Prior configuration:']
         for name, alias in merged.items():
             source = 'custom' if name in overrides else 'default'
-            lines.append(f'  - {name}: {MapModelMixin._format_alias(alias)} ({source})')
-        print('\n'.join(lines))
+            lines.append(
+                f'  - {name}: {MapModelMixin._format_alias(alias)} ({source})'
+            )
+        return lines
 
     @staticmethod
     def _format_alias(alias: list[float | np.floating | str]) -> str:
