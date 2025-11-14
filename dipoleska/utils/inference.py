@@ -44,6 +44,7 @@ class InferenceMixin:
             n_steps: int | None = None,
             output_dir: str = 'ultranest_logs',
             run_num: int | None = None,
+            run_name: str | None = None,
             reactive_sampler_kwargs: dict = {},
             run_kwargs: dict = {}
         ) -> None:
@@ -55,25 +56,38 @@ class InferenceMixin:
         :param n_steps: If the random step method is specified, this is the
             number of steps as used by `SliceSampler`.
         :param output_dir: Base directory for UltraNest outputs. Each run
-            creates a `run_<n>` subdirectory here (when `resume='subfolder'`).
+            creates a `run_<n>` subdirectory here (when `resume='subfolder'`,
+            the default) unless ``run_name`` is provided.
             A `dipoleska_prior.log` file describing the prior configuration is
             also written into that subdirectory.
         :param run_num: Explicit UltraNest run number to use when
             `resume='subfolder'`. If None (default), UltraNest auto-increments.
+        :param run_name: Optional custom folder name (relative to
+            ``output_dir``). When supplied, UltraNest writes directly into
+            ``output_dir/run_name`` with ``resume='overwrite'``.
         :param reactive_sampler_kwargs: Extra keyword arguments forwarded to
             ``ultranest.ReactiveNestedSampler``.
         :param run_kwargs: Keyword arguments forwarded to
             ``ReactiveNestedSampler.run``.
         '''
+        log_dir_override = None
+        resume_mode = 'subfolder'
+        if run_name is not None:
+            if not run_name.strip():
+                raise ValueError('run_name, if provided, must be non-empty.')
+            resume_mode = 'overwrite'
+            log_dir_override = os.path.join(output_dir, run_name)
+            os.makedirs(log_dir_override, exist_ok=True)
+
         self.ultranest_sampler = ultranest.ReactiveNestedSampler(
             param_names=self.parameter_names,
             loglike=self.log_likelihood,
             transform=self.prior_transform,
             **{
-                'log_dir': output_dir,
-                'resume': 'subfolder',
+                'log_dir': log_dir_override or output_dir,
+                'resume': resume_mode,
                 'vectorized': True,
-                'run_num': run_num,
+                'run_num': run_num if run_name is None else None,
                 **reactive_sampler_kwargs
             }
         )

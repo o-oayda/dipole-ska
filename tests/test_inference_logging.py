@@ -12,6 +12,9 @@ class DummyModel(InferenceMixin):
         super().__init__()
         self._prior = Prior(choose_prior={'A': ['Uniform', 0.0, 1.0]})
         self._parameter_names = ['A']
+        self.likelihood = 'point'
+        self.nside = 1
+        self.n_unmasked = 12
 
     @property
     def parameter_names(self) -> list[str]:
@@ -43,4 +46,7 @@ def test_inference_writes_prior_log(tmp_path: Path) -> None:
     assert log_file.exists()
     contents = log_file.read_text()
     assert 'DummyModel prior configuration' in contents
+    assert 'Likelihood: point' in contents
+    assert 'nside=1' in contents
+    assert 'unmasked_pixels=12' in contents
     assert 'A: [\'Uniform\', 0.0, 1.0]' in contents
