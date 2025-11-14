@@ -8,14 +8,21 @@ from astropy.io import fits
 
 class MapProcessor:
     def __init__(self,
-            density_map: NDArray[np.int_]
+            density_map: NDArray[np.int_] | list[NDArray[np.int_]]
         ):
         '''Class to mask the SKA maps
-        
-        :param density_map: The SKA density map to be masked. The original map
-            is not overwritten.
+
+        :param density_map: The SKA density map—or a list of maps of identical
+            shape—to be masked. The source arrays are never modified in place.
         '''
-        self._density_map = density_map
+        self._density_maps = (
+            density_map if isinstance(density_map, list) else [density_map]
+        )
+        lengths = {len(m) for m in self._density_maps}
+        if len(lengths) != 1:
+            raise ValueError('All maps must have the same number of pixels.')
+
+        self._density_map = self._density_maps[0]
         self.nside = hp.npix2nside(len(self._density_map))
         self.masked_map = np.ones(len(self._density_map), dtype=np.int64)
         self.is_masked = False
@@ -23,10 +30,26 @@ class MapProcessor:
     @property
     def density_map(self) -> NDArray[np.float64]:
         '''
-        Note that the density map's data type is converted to numpy float64 to
-        support np.nan for masked values.
+        Convenience accessor returning only the first map (useful when a single
+        map was supplied at construction). Returns float64 so masked pixels can
+        be set to ``np.nan``.
         '''
         out_map = self._density_map.astype(np.float64) # makes a copy
+        boolean_mask = ~self.masked_map.astype(np.bool_)
+        out_map[boolean_mask] = np.nan
+        return out_map
+
+    @property
+    def density_maps(self) -> list[NDArray[np.float64]]:
+        '''
+        Return every map provided at construction with the current mask applied.
+        Each array is copied and promoted to float64 so masked pixels become
+        ``np.nan``.
+        '''
+        return [self._apply_mask(m) for m in self._density_maps]
+
+    def _apply_mask(self, map_in: NDArray[np.int_]) -> NDArray[np.float64]:
+        out_map = map_in.astype(np.float64)
         boolean_mask = ~self.masked_map.astype(np.bool_)
         out_map[boolean_mask] = np.nan
         return out_map
