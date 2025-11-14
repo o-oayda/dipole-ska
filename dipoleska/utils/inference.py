@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Any, cast
 import ultranest
 import sys
@@ -6,6 +7,7 @@ from abc import abstractmethod
 from numpy.typing import NDArray
 import ultranest.stepsampler
 import numpy as np
+from dipoleska.models.model_helpers import MapModelMixin
 
 class InferenceMixin:
     '''
@@ -41,6 +43,9 @@ class InferenceMixin:
     def run_nested_sampling(self,
             step: bool = False,
             n_steps: int | None = None,
+            output_dir: str = 'ultranest_logs',
+            run_num: int | None = None,
+            run_name: str | None = None,
             reactive_sampler_kwargs: dict = {},
             run_kwargs: dict = {}
         ) -> None:
@@ -51,18 +56,43 @@ class InferenceMixin:
         :param step: Specify whether or not to use the random step method.
         :param n_steps: If the random step method is specified, this is the
             number of steps as used by `SliceSampler`.
-        :param reactive_sampler_kwargs: Keyword arguments for the
-            `ReactiveNestedSampler`.
-        :param run_kwargs: Keyword arguments for the sampler's run method.
+        :param output_dir: Base directory for UltraNest outputs. Each run
+            creates a `run_<n>` subdirectory here (when `resume='subfolder'`,
+            the default) unless ``run_name`` is provided.
+            A `dipoleska_run_info.log` file describing the prior configuration
+            is also written into that subdirectory.
+        :param run_num: Explicit UltraNest run number to use when
+            `resume='subfolder'`. If None (default), UltraNest auto-increments.
+        :param run_name: Optional custom folder name (relative to
+            ``output_dir``). When supplied, UltraNest writes directly into
+            ``output_dir/run_name`` with ``resume='overwrite'``.
+        :param reactive_sampler_kwargs: Extra keyword arguments forwarded to
+            ``ultranest.ReactiveNestedSampler``.
+        :param run_kwargs: Keyword arguments forwarded to
+            ``ReactiveNestedSampler.run``.
         '''
+        log_dir_override = None
+        resume_mode = 'subfolder'
+        self._last_run_name = None
+        self._prior_overrides = {}
+
+        if run_name is not None:
+            if not run_name.strip():
+                raise ValueError('run_name, if provided, must be non-empty.')
+            resume_mode = 'overwrite'
+            log_dir_override = os.path.join(output_dir, run_name)
+            os.makedirs(log_dir_override, exist_ok=True)
+            self._last_run_name = run_name
+
         self.ultranest_sampler = ultranest.ReactiveNestedSampler(
             param_names=self.parameter_names,
             loglike=self.log_likelihood,
             transform=self.prior_transform,
             **{
-                'log_dir': 'ultranest_logs',
-                'resume': 'subfolder',
+                'log_dir': log_dir_override or output_dir,
+                'resume': resume_mode,
                 'vectorized': True,
+                'run_num': run_num if run_name is None else None,
                 **reactive_sampler_kwargs
             }
         )
@@ -72,6 +102,7 @@ class InferenceMixin:
         
         self.results = self.ultranest_sampler.run(**run_kwargs)
         self.ultranest_sampler.print_results()
+        self._write_prior_log()
 
         # there is an issue with ultranest plotting when the log likelihood is
         # very negative (e.g. for the point-by-point likelihood)
@@ -129,3 +160,58 @@ class InferenceMixin:
         unest_logger.addHandler(unest_handler)
         unest_logger.setLevel(logging.WARN)
 
+    def _write_prior_log(self) -> None:
+        '''
+        Write a simple log file inside the current UltraNest run directory
+        enumerating the prior configuration used for this run.
+        '''
+        sampler_logs = getattr(self.ultranest_sampler, 'logs', None)
+        if not isinstance(sampler_logs, dict):
+            return
+
+        run_dir = sampler_logs.get('run_dir')
+        if not run_dir:
+            return
+
+        prior = getattr(self, 'prior', None)
+        if prior is None or not hasattr(prior, 'prior_dict'):
+            return
+
+        prior_dict = prior.prior_dict
+        os.makedirs(run_dir, exist_ok=True)
+        logfile = os.path.join(run_dir, 'dipoleska_run_info.log')
+
+        formatter = getattr(self, '_format_alias', None)
+        def format_alias(alias):
+            if callable(formatter):
+                return formatter(alias)
+            return str(alias)
+
+        lines = [f'{self.__class__.__name__} run metadata', '-' * 40]
+        custom_name = getattr(self, '_last_run_name', None)
+        if custom_name:
+            lines.append(f'Run name: {custom_name}')
+
+        likelihood = getattr(self, 'likelihood', None)
+        if likelihood is not None:
+            lines.append(f'Likelihood: {likelihood}')
+        map_meta = []
+        nside = getattr(self, 'nside', None)
+        if nside is not None:
+            map_meta.append(f'nside={nside}')
+        n_unmasked = getattr(self, 'n_unmasked', None)
+        if n_unmasked is not None:
+            map_meta.append(f'unmasked_pixels={n_unmasked}')
+        if map_meta:
+            lines.append('Map info: ' + ', '.join(map_meta))
+        lines.append('')
+
+        lines.extend(MapModelMixin._prior_configuration_lines(
+            model_label=self.__class__.__name__,
+            merged=prior_dict,
+            overrides=getattr(self, '_prior_overrides', {}),
+        ))
+        lines.append('')
+
+        with open(logfile, 'w', encoding='utf-8') as handle:
+            handle.write('\n'.join(lines))

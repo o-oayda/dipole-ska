@@ -31,7 +31,7 @@ plot_enabled = not args.no_plots
 
 loader = MapCollectionLoader(
     snr_cut=10, 
-    lower_flux_limit='1e-4',
+    lower_flux_limit='5e-4',
     lower_z_limit='0.5',
     gal_cut=10,
     map_types=['all']
@@ -43,6 +43,11 @@ processor = MapProcessor(dmap)
 processor.mask(output_frame='C', load_from_file='gal10_ps')
 masked_dmap = processor.density_map
 
+rmsmap = data['rms']
+processor = MapProcessor(rmsmap)
+processor.mask(output_frame='C', load_from_file='gal10_ps')
+masked_rmsmap = processor.density_map
+
 if plot_enabled:
     plotter = MapPlotter(masked_dmap)
     plotter.plot_density_map(projview_kwargs={'badcolor': 'grey', 'coord': ['C', 'G']})
@@ -53,13 +58,13 @@ if args.model == 'dipole':
     model = Dipole(masked_dmap, likelihood='poisson')
     step = False
 else:
-    model = Multipole(masked_dmap, ells=[0, 1, 2])
+    model = Multipole(masked_dmap, ells=[0, 1, 2], likelihood='general_poisson', rms_map=masked_rmsmap)
     step = True
 
 if plot_enabled:
     model.prior.plot_priors()
 
-model.run_nested_sampling(step=step)
+model.run_nested_sampling(step=step, run_name='mapcollections')
 
 if plot_enabled:
     model.corner_plot(backend='getdist', coordinates=['equatorial', 'galactic'])

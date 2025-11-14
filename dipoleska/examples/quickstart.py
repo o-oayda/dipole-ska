@@ -28,7 +28,7 @@ model = Dipole(density_map, likelihood='poisson')
 model.prior.plot_priors()
 
 # results are by default saved in ultranest_logs/
-model.run_nested_sampling()
+model.run_nested_sampling(run_name='quickstart')
 model.corner_plot(coordinates=['equatorial'], backend='getdist')
 model.posterior_predictive_check()
 model.sky_direction_posterior()

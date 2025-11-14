@@ -98,6 +98,7 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
 
         if prior is None:
             self._log_prior_sources('Multipole', default_prior_dict, overrides={})
+            self._prior_overrides = {}
             self._prior = Prior(choose_prior=default_prior_dict)
             return
 
@@ -115,6 +116,7 @@ class Multipole(LikelihoodMixin, InferenceMixin, MapModelMixin, PosteriorMixin):
         merged = default_prior_dict.copy()
         merged.update(user_dict)
         self._log_prior_sources('Multipole', merged, user_dict)
+        self._prior_overrides = user_dict.copy()
 
         self._prior = Prior(choose_prior=merged)
 
