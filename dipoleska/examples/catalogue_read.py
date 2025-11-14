@@ -1,5 +1,5 @@
 # %%
-from dipoleska.utils.map_read import CatalogueLoader
+from dipoleska.utils.catalogue_read import CatalogueLoader
 import healpy as hp
 import matplotlib.pyplot as plt
 #%%

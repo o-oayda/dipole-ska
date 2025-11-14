@@ -18,15 +18,7 @@ processor = MapProcessor(dmap)
 processor.mask(output_frame='C', load_from_file='gal10_ps')
 masked_dmap = processor.density_map
 
-rmsmap = data['rms']
-processor = MapProcessor(rmsmap)
-processor.mask(output_frame='C', load_from_file='gal10_ps')
-masked_rmsmap = processor.density_map
-
-plt.scatter(masked_rmsmap, masked_dmap, s=1)
-plt.show()
-
-model = Dipole(masked_dmap, likelihood='general_poisson', rms_map=masked_rmsmap)
+model = Dipole(masked_dmap, likelihood='general_poisson')
 model.prior.plot_priors()
 
 model.run_nested_sampling()
