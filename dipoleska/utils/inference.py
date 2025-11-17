@@ -160,6 +160,15 @@ class InferenceMixin:
         unest_logger.addHandler(unest_handler)
         unest_logger.setLevel(logging.WARN)
 
+    def get_run_dir(self) -> str | None:
+        sampler_logs = getattr(self.ultranest_sampler, 'logs', None)
+        if not isinstance(sampler_logs, dict):
+            return
+
+        run_dir = sampler_logs.get('run_dir')
+        if not run_dir:
+            return
+
     def _write_prior_log(self) -> None:
         '''
         Write a simple log file inside the current UltraNest run directory
