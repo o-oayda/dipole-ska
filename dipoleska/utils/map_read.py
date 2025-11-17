@@ -285,9 +285,11 @@ class MapCollectionLoader:
         for entry in entries:
             key = tuple(sorted(entry["attrs"].items()))
             if key not in grouped:
+                identifier = self._build_identifier(entry)
                 grouped[key] = {
                     "attrs": entry["attrs"],
-                    "files": {}
+                    "files": {},
+                    "id": identifier
                 }
             file_info = {"path": entry["path"]}
             if include_data and "data" in entry:
@@ -322,6 +324,23 @@ class MapCollectionLoader:
             "attrs": attrs,
             "path": str(path)
         }
+
+    def _build_identifier(self, entry: dict[str, Any]) -> str:
+        base_parts = []
+        # Include source info
+        if entry["attrs"].get("input_variant"):
+            base_parts.append("mapcollections_input")
+        else:
+            base_parts.append("mapcollections")
+        base_parts.append("doppler" if entry["attrs"].get("doppler") else "no_doppler")
+        if entry["attrs"].get("newsizes"):
+            base_parts.append("newsizes")
+        # Build from filename tokens (excluding map_type and ext)
+        stem_tokens = entry["path"].split("/")[-1].rsplit(".", 1)[0].split("_")
+        if stem_tokens:
+            stem_tokens = stem_tokens[1:]  # drop leading map_type prefix
+        base_parts.append("_".join(stem_tokens))
+        return "-".join(base_parts)
 
     def _source_attrs(self, path) -> dict[str, Any]:
         '''

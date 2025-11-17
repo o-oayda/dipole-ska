@@ -75,6 +75,7 @@ def test_grouped_entries_bundle_multiple_maps(tmp_path):
     assert entry["attrs"]["newsizes"] is True
     assert entry["attrs"]["z"] == 0.3
     assert entry["attrs"]["z_upper"] == 5.0
+    assert entry["id"].startswith("mapcollections-doppler-newsizes-nside64_flux1e-4_snr5_z0.3_z5.0")
 
 
 def test_clear_cache_allows_reload(tmp_path):
