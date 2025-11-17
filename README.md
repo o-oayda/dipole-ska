@@ -51,6 +51,11 @@ model.corner_plot()
 
 ## Examples
 See `dipoleska/examples/` for scripts showcasing how to use this repo.
+
+## Map collection loading
+
+The map collection loader supports both the legacy template-based API and a discovery mode that auto-parses filenames and groups maps. See `docs/map_collections.md` for usage details, including filtering and expected outputs.
+
 ## Testing
 
 Run the default (fast) suite with:

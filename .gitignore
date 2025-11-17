@@ -197,4 +197,5 @@ output/
 scratch/
 
 # .txt files from mapcollections
-data/ska/mapcollections/*.txt
+data/ska/mapcollections/*
+data/ska/mapcollections_input/*
