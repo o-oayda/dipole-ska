@@ -179,6 +179,7 @@ class MapCollectionLoader:
 
         if self.base_dirs:
             self.file_configuration = ""
+        # since the input_variant files have no snr attribute, drop it from the filename
         elif use_input_variant:
             self.file_configuration = (
                 f'_nside{self.nside}_flux{self.lower_flux_limit}'
@@ -410,7 +411,7 @@ class MapCollectionLoader:
         }
         missing = [name for name, value in required.items() if value is None]
         if "snr_cut" in missing and self.use_input_variant:
-            missing.remove("snr_cut")
+            missing.remove("snr_cut") # input variant maps have no snr attr
         if missing:
             raise ValueError(f"Missing required parameters for legacy loading: {', '.join(missing)}")
 
