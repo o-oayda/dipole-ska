@@ -233,7 +233,11 @@ def matplotlib_latex(
             rc_params[key] = value
 
 class MapPlotter:
-    def __init__(self, density_map: NDArray[np.int_ | np.float_] | Sequence[NDArray[np.int_ | np.float_]]) -> None:
+    def __init__(
+            self,
+            density_map: NDArray[np.int_ | np.float_]
+            | Sequence[NDArray[np.int_ | np.float_]]
+        ) -> None:
         self.density_maps = self._validate_density_maps(density_map)
         self.density_map = self.density_maps[0]
         self.smoothed_maps: list[NDArray[np.float64]] | None = None
@@ -248,7 +252,8 @@ class MapPlotter:
 
     @staticmethod
     def _validate_density_maps(
-            density_map: NDArray[np.int_ | np.float_] | Sequence[NDArray[np.int_ | np.float_]]
+            density_map: NDArray[np.int_ | np.float_]
+            | Sequence[NDArray[np.int_ | np.float_]]
         ) -> list[NDArray[np.int_ | np.float_]]:
         '''
         Ensure the provided density map(s) are valid NumPy arrays compatible
@@ -256,26 +261,41 @@ class MapPlotter:
         '''
         if isinstance(density_map, np.ndarray):
             maps = [density_map]
-        elif isinstance(density_map, Sequence) and not isinstance(density_map, (str, bytes)):
+        elif isinstance(density_map, Sequence) and not isinstance(
+            density_map, (str, bytes)
+        ):
             if len(density_map) == 0:
                 raise ValueError('density_map sequence cannot be empty.')
             maps = list(density_map)
         else:
-            raise TypeError('density_map must be a numpy array or a sequence of numpy arrays.')
+            raise TypeError(
+                'density_map must be a numpy array or a sequence of numpy '
+                'arrays.'
+            )
 
         validated: list[NDArray[np.int_ | np.float_]] = []
         for idx, map_array in enumerate(maps):
             if not isinstance(map_array, np.ndarray):
-                raise TypeError(f'density_map entry {idx} must be a numpy array; got {type(map_array).__name__}.')
+                raise TypeError(
+                    f'density_map entry {idx} must be a numpy array; got '
+                    f'{type(map_array).__name__}.'
+                )
             if map_array.ndim != 1:
-                raise ValueError(f'density_map entry {idx} must be a 1D HEALPix map; got shape {map_array.shape}.')
+                raise ValueError(
+                    f'density_map entry {idx} must be a 1D HEALPix map; got '
+                    f'shape {map_array.shape}.'
+                )
             if not np.issubdtype(map_array.dtype, np.number):
-                raise TypeError(f'density_map entry {idx} must have a numeric dtype; got {map_array.dtype!r}.')
+                raise TypeError(
+                    f'density_map entry {idx} must have a numeric dtype; got '
+                    f'{map_array.dtype!r}.'
+                )
             try:
                 hp.npix2nside(map_array.size)
             except Exception as exc:
                 raise ValueError(
-                    f'density_map entry {idx} must have a length compatible with a HEALPix map; got {map_array.size}.'
+                    'density_map entry {idx} must have a length compatible '
+                    f'with a HEALPix map; got {map_array.size}.'
                 ) from exc
             validated.append(map_array)
         return validated
@@ -307,10 +327,14 @@ class MapPlotter:
 
         if n_maps > 1:
             if 'sub' in projview_dict:
-                raise ValueError("Remove 'sub' from projview_kwargs when plotting multiple maps; layout is handled automatically.")
+                raise ValueError(
+                    "Remove 'sub' from projview_kwargs when plotting multiple "
+                    "maps; layout is handled automatically."
+                )
             n_cols = int(np.ceil(np.sqrt(n_maps)))
             n_rows = int(np.ceil(n_maps / n_cols))
-            # Use an explicit figure sized to fit subplots and keep previous panels intact within this call.
+            # Use an explicit figure sized to fit subplots and keep previous
+            # panels intact within this call.
             existing_fig = projview_dict.get('fig')
             if existing_fig is None:
                 if figsize is None:
@@ -345,8 +369,18 @@ class MapPlotter:
                     cmap=MapPlotter.cmap_scaled(cmap, cmap_alpha),
                     **map_projview_dict,
                     override_plot_properties={
-                        'vertical_tick_rotation': True if map_projview_dict.get('cb_orientation') == 'vertical' else False,
-                        'cbar_shrink': 0.5 if map_projview_dict.get('cb_orientation') == 'vertical' else 0.5
+                        'vertical_tick_rotation': (
+                            True
+                            if map_projview_dict.get('cb_orientation')
+                            == 'vertical'
+                            else False
+                        ),
+                        'cbar_shrink': (
+                            0.5
+                            if map_projview_dict.get('cb_orientation')
+                            == 'vertical'
+                            else 0.5
+                        )
                     },
                 )
                 axes.append(plt.gca())
@@ -357,7 +391,10 @@ class MapPlotter:
             # Reduce whitespace between subplots for a more compact layout.
             figure.subplots_adjust(wspace=0.06, hspace=0.)
 
-        return (axes[0] if len(axes) == 1 else axes), (figure if figure is not None else plt.gcf())
+        return (
+            axes[0] if len(axes) == 1 else axes,
+            figure if figure is not None else plt.gcf()
+        )
 
     def plot_density_map(self,
                         cmap: str = 'viridis',

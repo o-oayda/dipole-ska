@@ -13,8 +13,9 @@ import healpy as hp
 
 def _stub_projview(monkeypatch):
     """
-    Replace healpy.projview with a stub that respects the 'sub' kwarg to create
-    distinct matplotlib axes in line with the requested subplot index.
+    Replace healpy.projview with a stub that respects the 'sub' kwarg to
+    create distinct matplotlib axes in line with the requested subplot
+    index.
     """
     import dipoleska.utils.plotting as plotting
 
@@ -76,7 +77,11 @@ def test_plot_smooth_map_uses_smoothed_maps(monkeypatch):
     def _fake_smooth(map_data, **_kwargs):
         return np.full_like(map_data, 5.0, dtype=float)
 
-    monkeypatch.setattr(MapPlotter, 'moving_average_smooth', staticmethod(_fake_smooth))
+    monkeypatch.setattr(
+        MapPlotter,
+        'moving_average_smooth',
+        staticmethod(_fake_smooth)
+    )
 
     plotter = MapPlotter([map_one, map_two])
     axes, _ = plotter.plot_smooth_map()
