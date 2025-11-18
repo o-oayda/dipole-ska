@@ -318,6 +318,8 @@ class PosteriorMixin:
             backend: Literal['corner', 'getdist'] = 'getdist',
             legend_labels: list[str] | None = None,
             parameters: Sequence[str] | None = None,
+            paddings: list[float] | None = None,
+            legend_location: tuple[float, float] | None = None,
             **kwargs
         ) -> None:
         '''
@@ -348,6 +350,11 @@ class PosteriorMixin:
             multiple runs or a single run.
         :param parameters: Optional ordered list of parameter names to include
             in the plot. Names must exist in `posterior.parameter_names`.
+        :param paddings: Optional list of float paddings to adjust the x coord
+            of each parameter's annotation in the diagonal plots. The length
+            of the list should be equal to the number of parameters being plotted.
+        :param legend_location: Tuple of (x_offset, y_offset) to adjust the
+            legend position when plotting.
         '''
         if backend == 'corner':
             base_samples = np.asarray(self.samples, dtype=np.float64)
@@ -358,6 +365,9 @@ class PosteriorMixin:
                 None if self.weights is None
                 else np.asarray(self.weights, dtype=np.float64)
             )
+
+        if paddings is not None and len(paddings) != len(parameters):
+            raise ValueError("The number of paddings must match the number of parameters.")
         
         if len(legend_labels) is not None and len(legend_labels) != len(self.comparison_runs)+1:
             raise ValueError("The number of legend labels must match the number of runs.")
@@ -616,6 +626,7 @@ class PosteriorMixin:
                 plotter.triangle_plot(
                     mc_runs,
                     params=sanitized_names,
+                    legend_loc=legend_location,
                     **default_triangle_options
                 )
             finally:
@@ -634,12 +645,15 @@ class PosteriorMixin:
                     }
                     for run_data in prepared_runs
                 ]
+                run_specs = run_specs[::-1]
+                annotation_colors = annotation_colors[::-1]
                 paperplot_style.PaperPlotter.annotate_multi_run_intervals(
                     plotter,
                     sanitized_names,
                     latex_labels,
                     run_specs,
-                    annotation_colors
+                    annotation_colors,
+                    paddings
                 )
 
             if save_path is not None:
