@@ -117,3 +117,36 @@ def test_corner_plot_passes_selected_names_to_converter(monkeypatch):
 
     assert called['parameter_names'] == ['theta', 'phi']
     assert called['coordinates'] == ['equatorial']
+
+
+def test_corner_plot_allows_mismatched_comparison_with_subset(monkeypatch):
+    def fake_corner(samples, **kwargs):
+        return None
+
+    monkeypatch.setattr(posterior_module, 'corner', fake_corner)
+
+    base_samples = np.array([[0.1, 0.2, 0.3]])
+    base_params = ['phi', 'theta', 'D']
+    base = DummyPosterior(base_samples, base_params)
+
+    comp_samples = np.array([[1.0, 2.0]])
+    comp_params = ['theta', 'phi']
+    comp = DummyPosterior(comp_samples, comp_params)
+    base.add_comparison_run(comp, name='comp')
+
+    # Should not raise; subset selects common angles
+    base.corner_plot(
+        backend='corner',
+        parameters=['phi', 'theta']
+    )
+
+
+def test_corner_plot_mismatched_without_subset_errors(monkeypatch):
+    monkeypatch.setattr(posterior_module, 'corner', lambda *_, **__: None)
+
+    base = DummyPosterior(np.array([[0.1, 0.2]]), ['phi', 'theta'])
+    comp = DummyPosterior(np.array([[0.3, 0.4]]), ['phi', 'theta', 'D'])
+    base.add_comparison_run(comp, name='comp')
+
+    with pytest.raises(ValueError, match='Provide a `parameters` list'):
+        base.corner_plot(backend='corner')

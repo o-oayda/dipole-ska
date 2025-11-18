@@ -116,8 +116,12 @@ class PosteriorMixin:
         :param name: Optional name to give to the additional posterior instance.
         '''
         if run.parameter_names != self.parameter_names:
-            raise ValueError(
-                'Comparison run parameter names must match the base posterior.'
+            warnings.warn(
+                'Comparison run parameter names differ from the base posterior; '
+                'provide a common `parameters` list when plotting to select the '
+                'overlap.',
+                RuntimeWarning,
+                stacklevel=2
             )
 
         run_name = name or getattr(run, 'name', run.__class__.__name__)
@@ -352,32 +356,45 @@ class PosteriorMixin:
                 else np.asarray(self.weights, dtype=np.float64)
             )
 
-        normalised_coordinates = self._normalise_coordinates_argument(coordinates)
+        normalised_coordinates = self._normalise_coordinates_argument(
+            coordinates
+        )
 
-        index_lookup = {
+        base_index_lookup = {
             name: idx for idx, name in enumerate(self.parameter_names)
         }
+        comparison_name_sets = [
+            set(run.parameter_names) for run in self.comparison_runs
+        ]
+        names_match = all(
+            set(self.parameter_names) == name_set
+            for name_set in comparison_name_sets
+        )
         if parameters is not None:
             if len(parameters) == 0:
                 raise ValueError('parameters list cannot be empty.')
             selected_names: list[str] = []
-            selected_indices: list[int] = []
 
             for name in parameters:
-                if name not in index_lookup:
+                if name not in base_index_lookup:
                     raise ValueError(
                         f'Parameter "{name}" not found in parameter_names.'
                     )
                 if name in selected_names:
                     continue
                 selected_names.append(name)
-                selected_indices.append(index_lookup[name])
 
         else:
+            if not names_match and self.comparison_runs:
+                raise ValueError(
+                    'Comparison run parameter names differ from the base '
+                    'posterior. Provide a `parameters` list selecting the '
+                    'common subset for plotting.'
+                )
             selected_names = list(self.parameter_names)
-            selected_indices = list(range(len(selected_names)))
 
-        base_samples = base_samples[:, selected_indices]
+        base_indices = [base_index_lookup[name] for name in selected_names]
+        base_samples = base_samples[:, base_indices]
 
         primary_label = getattr(self, 'name', self.__class__.__name__)
         run_descriptors: list[dict[str, Any]] = [{
@@ -397,7 +414,20 @@ class PosteriorMixin:
             if raw_samples is None:
                 continue
             raw_samples = np.asarray(raw_samples, dtype=np.float64)
-            raw_samples = raw_samples[:, selected_indices]
+            run_index_lookup = {
+                name: idx for idx, name in enumerate(comparison_run.parameter_names)
+            }
+            try:
+                run_selected_indices = [
+                    run_index_lookup[name] for name in selected_names
+                ]
+            except KeyError as exc:
+                raise ValueError(
+                    f'Comparison run "{comparison_run.name}" is missing '
+                    f'parameter "{exc.args[0]}"; please provide a common '
+                    'parameter subset.'
+                ) from exc
+            raw_samples = raw_samples[:, run_selected_indices]
             run_descriptors.append({
                 'name': comparison_run.name,
                 'raw_samples': np.asarray(raw_samples, dtype=np.float64),
