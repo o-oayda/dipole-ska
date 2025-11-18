@@ -110,9 +110,11 @@ def test_add_comparison_run_stores_samples():
     np.testing.assert_allclose(runs[0].samples, comparison_samples)
 
 
-def test_add_comparison_run_requires_matching_parameters():
+def test_add_comparison_run_mismatched_names_warns():
     posterior, base_samples = _build_samples()
     other = DummyPosterior(base_samples, ['phi', 'theta'])
 
-    with pytest.raises(ValueError):
+    with pytest.warns(RuntimeWarning):
         posterior.add_comparison_run(other)
+
+    assert len(posterior.comparison_runs) == 1
