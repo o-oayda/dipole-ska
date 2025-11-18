@@ -3,7 +3,7 @@
 set python_path=`which python3.12`
 
 if ( "$1" == "conda" ) then
-    echo "creating both conda environment cenv and venv"
+    echo "creating conda environment cenv"
     set conda_path=`which conda`
     if ( "$conda_path" == "" ) then
         echo "Conda not found. Please install before running with conda flag."
@@ -13,12 +13,7 @@ if ( "$1" == "conda" ) then
         conda activate cenv
         pip install --upgrade pip
         pip install -e .
-
-        echo "creating virtual environment .venv"
-        $python_path -m venv .venv
-        source .venv/bin/activate.csh
-        pip install --upgrade pip
-        pip install -e .
+        conda install -c conda-forge namaster
     endif
 else
     echo "creating virtual environment .venv"
