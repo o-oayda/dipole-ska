@@ -238,6 +238,14 @@ class MapPlotter:
             density_map: NDArray[np.int_ | np.float_]
             | Sequence[NDArray[np.int_ | np.float_]]
         ) -> None:
+        '''
+        Plot and optionally smooth one or more HEALPix density maps. Accepts a
+        single map or a sequence of maps; when multiple maps are supplied,
+        plots are laid out as subplots automatically.
+
+        :param density_map: A 1D HEALPix map or sequence of maps. Maps may
+            differ in size (nside) but each entry must be a numeric ndarray.
+        '''
         self.density_maps = self._validate_density_maps(density_map)
         self.density_map = self.density_maps[0]
         self.smoothed_maps: list[NDArray[np.float64]] | None = None
@@ -258,6 +266,9 @@ class MapPlotter:
         '''
         Ensure the provided density map(s) are valid NumPy arrays compatible
         with healpy projections.
+
+        :param density_map: Single 1D ndarray map or sequence of maps.
+        :return: List of validated numpy arrays.
         '''
         if isinstance(density_map, np.ndarray):
             maps = [density_map]
@@ -301,6 +312,14 @@ class MapPlotter:
         return validated
 
     def _build_projview_kwargs(self, projview_kwargs: dict, default_title: str) -> dict:
+        '''
+        Merge user-supplied projview kwargs with defaults and inject a
+        fallback title when none is provided.
+
+        :param projview_kwargs: Dictionary passed through to hp.projview.
+        :param default_title: Title used when user does not specify one.
+        :return: Merged kwargs dictionary.
+        '''
         projview_dict = {}
         for key in self.default_settings:
             if key not in projview_kwargs:
@@ -320,6 +339,17 @@ class MapPlotter:
             projview_dict: dict,
             title_was_user_supplied: bool
         ) -> tuple[Axes | list[Axes], Figure]:
+        '''
+        Internal helper to render one or many maps, optionally arranging them
+        into a subplot grid and returning the axes/figure handles.
+
+        :param maps_to_plot: Sequence of HEALPix maps to render.
+        :param cmap: Colormap name.
+        :param cmap_alpha: Colormap transparency scaling.
+        :param projview_dict: Final kwargs to pass to hp.projview.
+        :param title_was_user_supplied: Whether user provided a title.
+        :return: Axes (list when multiple maps) and Figure.
+        '''
         n_maps = len(maps_to_plot)
         axes: list[Axes] = []
         figure: Figure | None = None
