@@ -169,16 +169,25 @@ class PosteriorMixin:
             normalised.append(lowered)
         return normalised
 
-    def _angle_parameter_pairs(self) -> list[tuple[int, int]]:
+    def _angle_parameter_pairs(
+            self,
+            parameter_names: Sequence[str] | None = None
+        ) -> list[tuple[int, int]]:
         '''
-        Identify (phi, theta) index pairs within the parameter list. Supports both
-        the simple dipole parameter names ('phi', 'theta') and multipole-style
-        names that look like `phi_lX_Y` / `theta_lX_Y`. This makes sure we
-        keep the angular coords of each unit vector together when e.g. rotating.
+        Identify (phi, theta) index pairs within the parameter list. Supports
+        both the simple dipole parameter names ('phi', 'theta') and
+        multipole-style names that look like `phi_lX_Y` / `theta_lX_Y`. This
+        makes sure we keep the angular coords of each unit vector together
+        when e.g. rotating.
+
+        :param parameter_names: Optional explicit parameter name ordering; if
+            None, uses self.parameter_names.
         '''
-        index_by_name = {
-            name: idx for idx, name in enumerate(self.parameter_names)
-        }
+        names = (
+            tuple(self.parameter_names)
+            if parameter_names is None else tuple(parameter_names)
+        )
+        index_by_name = {name: idx for idx, name in enumerate(names)}
         pairs: list[tuple[int, int]] = []
 
         # dipole models expose bare "phi"/"theta" entries; keep them paired
@@ -204,8 +213,10 @@ class PosteriorMixin:
 
     def _convert_samples(self,
             samples: NDArray[np.float64],
-            coordinates: list[str] | tuple[str, ...] | None
-        ) -> NDArray[np.float64]:
+            coordinates: list[str] | tuple[str, ...] | None,
+            parameter_names: Sequence[str] | None = None,
+            return_conversion_flag: bool = False
+        ) -> NDArray[np.float64] | tuple[NDArray[np.float64], bool]:
         '''
         Change coordinates of samples depending on user input for every angular
         parameter pair (dipole or multipole). We read the parameter names of the
@@ -221,17 +232,48 @@ class PosteriorMixin:
             the target system, where the native system is the first element in 
             coordinates and the target system is the second element.
 
+        :param parameter_names: Optional explicit parameter name ordering; if
+            None, uses self.parameter_names.
+        :param return_conversion_flag: When True, return a tuple of
+            (converted_samples, conversion_applied) indicating whether any
+            angular conversion was performed. When False (default), only the
+            converted samples are returned.
         :return: Parameter samples chain rotated transformed to the target
-            coordinate system.
+            coordinate system, optionally with a conversion flag.
         '''
         validated_coordinates = self._normalise_coordinates_argument(coordinates)
 
+        names = (
+            tuple(self.parameter_names)
+            if parameter_names is None else tuple(parameter_names)
+        )
+
         samples_array = np.asarray(samples, dtype=np.float64)
+        if samples_array.shape[1] != len(names):
+            raise ValueError(
+                f'Expected samples with {len(names)} columns, got '
+                f'{samples_array.shape[1]}.'
+            )
         samples_for_corner = samples_array.copy()
 
-        angle_pairs = self._angle_parameter_pairs()
+        angle_pairs = self._angle_parameter_pairs(names)
         if not angle_pairs:
-            return samples_for_corner
+            angular_present = any(
+                (name in ('phi', 'theta'))
+                or _MULTIPOLE_ANGLE_PATTERN.match(name)
+                for name in names
+            )
+            if angular_present and (validated_coordinates is not None):
+                warnings.warn(
+                    'Skipping angle conversion because angular parameters are '
+                    'missing their phi/theta pair in the selected list.',
+                    RuntimeWarning,
+                    stacklevel=2
+                )
+            return (
+                (samples_for_corner, False)
+                if return_conversion_flag else samples_for_corner
+            )
 
         def _transform_angles(
                 longitude_deg: NDArray[np.float64],
@@ -261,12 +303,16 @@ class PosteriorMixin:
             samples_for_corner[:, phi_idx] = transformed_longitude
             samples_for_corner[:, theta_idx] = transformed_latitude
 
-        return samples_for_corner
+        return (
+            (samples_for_corner, True)
+            if return_conversion_flag else samples_for_corner
+        )
 
     def corner_plot(self,
             coordinates: list[str] | None = None,
             save_path: str | None = None,
             backend: Literal['corner', 'getdist'] = 'getdist',
+            parameters: Sequence[str] | None = None,
             **kwargs
         ) -> None:
         '''
@@ -293,6 +339,8 @@ class PosteriorMixin:
             we use the weighted samples and not the equal weighted samples,
             since the process of boostrap resampling seems to mess with the 2D
             marginals that getdist draws.
+        :param parameters: Optional ordered list of parameter names to include
+            in the plot. Names must exist in `posterior.parameter_names`.
         '''
         if backend == 'corner':
             base_samples = np.asarray(self.samples, dtype=np.float64)
@@ -305,6 +353,31 @@ class PosteriorMixin:
             )
 
         normalised_coordinates = self._normalise_coordinates_argument(coordinates)
+
+        index_lookup = {
+            name: idx for idx, name in enumerate(self.parameter_names)
+        }
+        if parameters is not None:
+            if len(parameters) == 0:
+                raise ValueError('parameters list cannot be empty.')
+            selected_names: list[str] = []
+            selected_indices: list[int] = []
+
+            for name in parameters:
+                if name not in index_lookup:
+                    raise ValueError(
+                        f'Parameter "{name}" not found in parameter_names.'
+                    )
+                if name in selected_names:
+                    continue
+                selected_names.append(name)
+                selected_indices.append(index_lookup[name])
+
+        else:
+            selected_names = list(self.parameter_names)
+            selected_indices = list(range(len(selected_names)))
+
+        base_samples = base_samples[:, selected_indices]
 
         primary_label = getattr(self, 'name', self.__class__.__name__)
         run_descriptors: list[dict[str, Any]] = [{
@@ -323,6 +396,8 @@ class PosteriorMixin:
             )
             if raw_samples is None:
                 continue
+            raw_samples = np.asarray(raw_samples, dtype=np.float64)
+            raw_samples = raw_samples[:, selected_indices]
             run_descriptors.append({
                 'name': comparison_run.name,
                 'raw_samples': np.asarray(raw_samples, dtype=np.float64),
@@ -336,13 +411,17 @@ class PosteriorMixin:
             })
 
         prepared_runs: list[dict[str, Any]] = []
+        conversion_applied = False
         for descriptor in run_descriptors:
             raw_samples = descriptor['raw_samples']
             if normalised_coordinates is not None:
-                converted_samples = self._convert_samples(
+                converted_samples, converted_flag = self._convert_samples(
                     raw_samples,
-                    normalised_coordinates
+                    normalised_coordinates,
+                    parameter_names=selected_names,
+                    return_conversion_flag=True
                 )
+                conversion_applied = conversion_applied or converted_flag
             else:
                 converted_samples = raw_samples.copy()
             prepared_runs.append({
@@ -359,7 +438,7 @@ class PosteriorMixin:
 
         # determine if we need to override angular labels after a rotation
         target_coordinate: str | None = None
-        if normalised_coordinates:
+        if normalised_coordinates and conversion_applied:
             target_coordinate = normalised_coordinates[-1]
 
         def _maybe_override_angle_label(
@@ -393,7 +472,7 @@ class PosteriorMixin:
         corner_labels: list[str] = []
         seen_names: set[str] = set()
 
-        for index, raw_name in enumerate(self.parameter_names):
+        for index, raw_name in enumerate(selected_names):
             latex_label = _parameter_latex_label(raw_name)
             latex_label = _maybe_override_angle_label(raw_name, latex_label)
             sanitized_name = _sanitise_parameter_name(raw_name, index, seen_names)
@@ -568,7 +647,10 @@ class PosteriorMixin:
         fig = plt.figure(figsize=(10, 10))
         for model, color, label in zip([self, second_model], colors, labels):
             if coordinates is not None:
-                samples_for_corner = model._convert_samples(model.samples, coordinates)
+                samples_for_corner = model._convert_samples(
+                    model.samples,
+                    coordinates
+                )
             else:
                 samples_for_corner = model.samples
             
@@ -698,7 +780,10 @@ function to this method when instantiating from an ultranest run number.'''
         normalised_coordinates = self._normalise_coordinates_argument(coordinates)
 
         base_samples = np.asarray(self.samples, dtype=np.float64)
-        full_samples_for_sky = self._convert_samples(base_samples, normalised_coordinates)
+        full_samples_for_sky = self._convert_samples(
+            base_samples,
+            normalised_coordinates
+        )
 
         run_descriptors: list[tuple[str, NDArray[np.float64]]] = [
             (getattr(self, 'name', 'Primary'), full_samples_for_sky)
