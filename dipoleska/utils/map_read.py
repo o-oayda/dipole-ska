@@ -179,6 +179,11 @@ class MapCollectionLoader:
 
         if self.base_dirs:
             self.file_configuration = ""
+        elif use_input_variant:
+            self.file_configuration = (
+                f'_nside{self.nside}_flux{self.lower_flux_limit}'
+                f'_z{self.lower_z_limit}_z{self.upper_z_limit}_gal{self.gal_cut}.0'
+            )
         else:
             self.file_configuration = (
                 f'_nside{self.nside}_flux{self.lower_flux_limit}_snr{self.snr_cut}'
@@ -404,6 +409,8 @@ class MapCollectionLoader:
             "map_types": self.map_types,
         }
         missing = [name for name, value in required.items() if value is None]
+        if "snr_cut" in missing and self.use_input_variant:
+            missing.remove("snr_cut")
         if missing:
             raise ValueError(f"Missing required parameters for legacy loading: {', '.join(missing)}")
 
