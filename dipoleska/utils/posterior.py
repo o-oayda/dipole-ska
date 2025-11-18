@@ -267,6 +267,7 @@ class PosteriorMixin:
             coordinates: list[str] | None = None,
             save_path: str | None = None,
             backend: Literal['corner', 'getdist'] = 'getdist',
+            legend_labels: list[str] | None = None,
             **kwargs
         ) -> None:
         '''
@@ -293,6 +294,8 @@ class PosteriorMixin:
             we use the weighted samples and not the equal weighted samples,
             since the process of boostrap resampling seems to mess with the 2D
             marginals that getdist draws.
+        :param legend_labels: Specify the legend labels to use when plotting
+            multiple runs or a single run.
         '''
         if backend == 'corner':
             base_samples = np.asarray(self.samples, dtype=np.float64)
@@ -303,12 +306,15 @@ class PosteriorMixin:
                 None if self.weights is None
                 else np.asarray(self.weights, dtype=np.float64)
             )
+        
+        if len(legend_labels) is not None and len(legend_labels) != len(self.comparison_runs)+1:
+            raise ValueError("The number of legend labels must match the number of runs.")
 
         normalised_coordinates = self._normalise_coordinates_argument(coordinates)
 
         primary_label = getattr(self, 'name', self.__class__.__name__)
         run_descriptors: list[dict[str, Any]] = [{
-            'name': primary_label,
+            'name': legend_labels[0] if legend_labels is not None else primary_label,
             'raw_samples': base_samples,
             'weights': base_weights
         }]
@@ -324,7 +330,7 @@ class PosteriorMixin:
             if raw_samples is None:
                 continue
             run_descriptors.append({
-                'name': comparison_run.name,
+                'name': legend_labels[len(run_descriptors)] if legend_labels is not None else comparison_run.name,
                 'raw_samples': np.asarray(raw_samples, dtype=np.float64),
                 'weights': (
                     None if backend == 'corner'
