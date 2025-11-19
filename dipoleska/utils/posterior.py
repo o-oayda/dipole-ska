@@ -359,7 +359,7 @@ class PosteriorMixin:
                 else np.asarray(self.weights, dtype=np.float64)
             )
         
-        if len(legend_labels) is not None and len(legend_labels) != len(self.comparison_runs)+1:
+        if legend_labels is not None and len(legend_labels) != len(self.comparison_runs)+1:
             raise ValueError("The number of legend labels must match the number of runs.")
 
         normalised_coordinates = self._normalise_coordinates_argument(
