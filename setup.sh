@@ -46,9 +46,9 @@ if [ "${1:-}" == "conda" ]; then
         $conda_path create -n cenv python=3.12 -y
         source "$($conda_path info --base)/etc/profile.d/conda.sh"
         conda activate cenv
+        conda install -c conda-forge namaster -y
         pip install --upgrade pip
         pip install -e .
-        conda install -c conda-forge namaster -y
     fi
 else
     echo "creating virtual environment .venv"

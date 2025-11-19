@@ -5,6 +5,8 @@ This project supports two ways to load SKA map collections:
 1. **Legacy (template-based)**: you provide the same parameters as before (`snr_cut`, `lower_flux_limit`, `lower_z_limit`, `gal_cut`, `nside`, `map_types`, and doppler/newsize/input flags). The loader builds the exact expected filenames from those parameters and loads them. Behavior is unchanged from the original API (note however the boolean kwargs included at the top of the MapCollectionLoader call below).
 2. **Discovery (filename-parsing)**: the loader scans the mapcollection directories on disk, parses attributes from filenames, and groups files that share the same attribute set. This automatically supports new attributes in filenames without code changes.
 
+You can also pass `use_base_rms=True` to swap the per-map RMS files with a reference RMS map (per `nside`) distributed alongside the data.
+
 ## Legacy usage (unchanged)
 
 ```python
