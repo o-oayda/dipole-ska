@@ -130,8 +130,8 @@ class MapCollectionLoader:
         self.newsizes_upper_z_limit = float("10.0")
 
         self._base_rms_maps = {
-            64: 'mapcollections/doppler/rmsmap_nside64_flux1e-05_snr5_z0.0_z5.0_gal10.0.fits',
-            256: 'mapcollections/doppler/rmsmap_nside256_flux1e-05_snr5_z0.0_z5.0_gal10.0.fits'
+            64: 'mapcollections/doppler/rmsmap_nside64_flux1e-05_snr5_z0.0_z5.0_gal0.0.fits',
+            256: 'mapcollections/doppler/rmsmap_nside256_flux1e-05_snr5_z0.0_z5.0_gal0.0.fits'
         }
         self._base_rms_cache: dict[int, Any] = {}
 
