@@ -12,6 +12,17 @@ To get set up and working:
 > [!NOTE]
 > We are using `matplotlib==3.7.5` to avoid the plotting issue where the contours wrap around the coordinates.
 
+### Using `setup.sh`
+
+You can automate environment creation with `./setup.sh`:
+
+- `./setup.sh` creates and activates a virtualenv at `.venv` (fails if it exists).
+- `./setup.sh conda` creates and activates a conda env named `cenv` (fails if it
+  already exists). This is needed if one intends to do power spectrum analysis.
+- Both modes require `python3.12` on `PATH` and install this repo in editable
+  mode.
+- For usage/help: `./setup.sh -h`
+
 ## Adding the Data
 Place the SKA maps in their corresponding folder in `data/ska/`.
 For example, the maps in `SKA_Briggs1m_AA` would go in `data/ska/briggs_1/AA/`.

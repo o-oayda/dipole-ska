@@ -3,6 +3,23 @@ set -euo pipefail
 
 trap 'echo "Command failed at line $LINENO: $BASH_COMMAND" >&2; exit 1' ERR
 
+if [ "${1:-}" == "-h" ] || [ "${1:-}" == "--help" ]; then
+    cat <<'EOF'
+Usage: ./setup.sh [conda]
+
+Creates a Python 3.12 environment and installs this project in editable mode.
+
+Modes:
+  conda   Create/activate conda env "cenv" and install dependencies.
+  (none)  Create/activate virtualenv ".venv" and install dependencies.
+
+Safeguards:
+  - Fails if python3.12 is missing from PATH.
+  - Fails if target env (.venv or conda "cenv") already exists.
+EOF
+    exit 0
+fi
+
 python_path=$(command -v python3.12 || true)
 if [ -z "$python_path" ]; then
     echo "python3.12 not found on PATH; please install or set PYTHON_BIN" >&2
