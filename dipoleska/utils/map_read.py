@@ -1,4 +1,5 @@
 from typing import Any, List, Literal
+from pathlib import Path
 import healpy as hp
 from numpy.typing import NDArray
 import numpy as np
@@ -85,6 +86,7 @@ class MapCollectionLoader:
              use_doppler: bool = True,
              use_newsizes: bool = False,
              use_input_variant: bool = False,
+             use_base_rms: bool = False,
              base_dirs: List[str] | None = None,
         ) -> None:
         '''
@@ -99,6 +101,8 @@ class MapCollectionLoader:
             fixed.
         :param use_input_variant: Use the sims from `SimulationInput`; these
             do not have observational effects included
+        :param use_base_rms: Replace the RMS maps with a reference baseline map
+            (per nside) instead of the RMS map bundled with each collection.
         :param snr_cut: SNR cut to apply when loading maps.
         :param lower_flux_limit: Lower flux limit to apply when loading maps.
         :param lower_z_limit: Lower redshift limit to apply when loading maps.
@@ -110,6 +114,8 @@ class MapCollectionLoader:
         :param base_dirs: When provided, maps are discovered dynamically from
             these directories by parsing filenames for attributes. This allows
             new attributes to be supported without code changes.
+        :param use_base_rms: Substitute the per-collection RMS maps with the
+            reference RMS maps (see `MapCollectionLoader._base_rms_maps`).
         '''
         
         # Cache can hold either a dict[map_type, data] (legacy or single-group)
@@ -122,6 +128,12 @@ class MapCollectionLoader:
         self.nside = nside
         self.default_upper_z_limit = float("5.0")
         self.newsizes_upper_z_limit = float("10.0")
+
+        self._base_rms_maps = {
+            64: 'mapcollections/doppler/rmsmap_nside64_flux1e-05_snr5_z0.0_z5.0_gal0.0.fits',
+            256: 'mapcollections/doppler/rmsmap_nside256_flux1e-05_snr5_z0.0_z5.0_gal0.0.fits'
+        }
+        self._base_rms_cache: dict[int, Any] = {}
 
         if use_newsizes:
             newsize_str = '_new_sizes'
@@ -138,6 +150,7 @@ class MapCollectionLoader:
         self.use_doppler = use_doppler
         self.use_newsizes = use_newsizes
         self.use_input_variant = use_input_variant
+        self.use_base_rms = use_base_rms
 
         legacy_candidate = base_dirs is None and map_types is not None
         missing_legacy = []
@@ -214,6 +227,7 @@ class MapCollectionLoader:
                 f"Base directories: {', '.join(self.base_dirs)}",
                 f"Map types: {map_types_str}",
                 "Attributes are discovered from filenames.",
+                f"Using base RMS map: {self.use_base_rms}",
             ])
 
         return "\n".join([
@@ -227,7 +241,8 @@ class MapCollectionLoader:
             f"Galactic cut: {self.gal_cut}",
             f"Using Doppler boost: {self.use_doppler}",
             f"Using new sizes: {self.use_newsizes}",
-            f"Using input variant: {self.use_input_variant}"
+            f"Using input variant: {self.use_input_variant}",
+            f"Using base RMS map: {self.use_base_rms}"
         ])
 
     def list_available(self, map_type: str | None = None, refresh: bool = False,
@@ -393,6 +408,39 @@ class MapCollectionLoader:
         except ValueError:
             return raw
 
+    def _resolve_base_rms_path(self, nside: int) -> Path:
+        """
+        Resolve the path to the reference RMS map for the given nside.
+        Accepts absolute paths in _base_rms_maps; otherwise prefixes with
+        data/ska and appends .fits when no extension is present.
+        """
+        if nside is None:
+            raise ValueError("nside must be provided to select a base RMS map.")
+        if nside not in self._base_rms_maps:
+            raise ValueError(f"No base RMS map configured for nside {nside}.")
+        raw_path = self._base_rms_maps[nside]
+        path = Path(raw_path)
+        if not path.is_absolute():
+            path = Path("data/ska") / path
+        if path.suffix == "":
+            path = path.with_suffix(".fits")
+        return path
+
+    def _load_base_rms_map(self, nside: int) -> tuple[str, Any]:
+        """
+        Load the reference RMS map for the given nside, caching the result.
+        """
+        path = self._resolve_base_rms_path(nside)
+        if nside in self._base_rms_cache:
+            return str(path), self._base_rms_cache[nside]
+        print(f"Reading in {path}...")
+        if path.suffix == ".fits":
+            data = hp.read_map(str(path), nest=False)
+        else:
+            data = np.loadtxt(path)
+        self._base_rms_cache[nside] = data
+        return str(path), data
+
     def _infer_map_type(self, prefix: str) -> str:
         # Try to infer from known prefixes; otherwise, use the prefix itself.
         inverse = {v[0]: k for k, v in self.map_dict.items()}
@@ -442,25 +490,35 @@ class MapCollectionLoader:
             for entry in entries:
                 path = entry["path"]
                 ext = entry["ext"]
+                map_type = entry["map_type"]
                 try:
-                    print(f"Reading in {path}...")
-                    if ext == ".fits":
-                        data = hp.read_map(path, nest=False)
+                    if map_type == "rms" and self.use_base_rms:
+                        nside_value = entry["attrs"].get("nside")
+                        if nside_value is None:
+                            raise ValueError(
+                                "Cannot use base RMS map because no nside attribute "
+                                "was found for this entry."
+                            )
+                        path, data = self._load_base_rms_map(int(nside_value))
                     else:
-                        data = np.loadtxt(path)
+                        print(f"Reading in {path}...")
+                        if ext == ".fits":
+                            data = hp.read_map(path, nest=False)
+                        else:
+                            data = np.loadtxt(path)
                     loaded_entries.append({
-                        "map_type": entry["map_type"],
+                        "map_type": map_type,
                         "attrs": entry["attrs"],
                         "path": path,
                         "data": data,
                     })
                 except FileNotFoundError as e:
                     raise FileNotFoundError(
-                        f"File not found for map type '{entry['map_type']}'. Expected at: {path}"
+                        f"File not found for map type '{map_type}'. Expected at: {path}"
                     ) from e
                 except Exception as e:
                     raise RuntimeError(
-                        f"Cannot read file for map type '{entry['map_type']}' at {path}."
+                        f"Cannot read file for map type '{map_type}' at {path}."
                         f" Underlying error: {e}"
                     ) from e
             grouped_loaded = self._group_entries(loaded_entries, include_data=True)
@@ -475,6 +533,11 @@ class MapCollectionLoader:
 
         # Legacy behaviour (pre-configured filenames)
         self._legacy_validate()
+        base_rms_path: str | None = None
+        base_rms_data: Any = None
+        if self.use_base_rms and "rms" in self.map_types:
+            base_rms_path, base_rms_data = self._load_base_rms_map(int(self.nside))
+
         self._map_collections = {}
         for map_type in self.map_types:
             if map_type not in self.map_dict:
@@ -485,11 +548,14 @@ class MapCollectionLoader:
                         f"{self.file_configuration}{ext}")
 
             try:
-                print(f"Reading in {file_path}...")
-                if ext == ".fits":
-                    data = hp.read_map(file_path, nest=False)
+                if map_type == "rms" and self.use_base_rms:
+                    data = base_rms_data
                 else:
-                    data = np.loadtxt(file_path)
+                    print(f"Reading in {file_path}...")
+                    if ext == ".fits":
+                        data = hp.read_map(file_path, nest=False)
+                    else:
+                        data = np.loadtxt(file_path)
                 self._map_collections[map_type] = data
 
             except FileNotFoundError as e:
