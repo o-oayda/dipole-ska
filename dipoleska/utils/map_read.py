@@ -114,6 +114,8 @@ class MapCollectionLoader:
         :param base_dirs: When provided, maps are discovered dynamically from
             these directories by parsing filenames for attributes. This allows
             new attributes to be supported without code changes.
+        :param use_base_rms: Substitute the per-collection RMS maps with the
+            reference RMS maps (see `MapCollectionLoader._base_rms_maps`).
         '''
         
         # Cache can hold either a dict[map_type, data] (legacy or single-group)
