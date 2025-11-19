@@ -20,6 +20,12 @@ EOF
     exit 0
 fi
 
+# ensure unrecognised args raise an error and exit
+if [ -n "${1:-}" ] && [ "${1}" != "conda" ]; then
+    echo "Unrecognized argument: ${1}. Use -h for help." >&2
+    exit 1
+fi
+
 python_path=$(command -v python3.12 || true)
 if [ -z "$python_path" ]; then
     echo "python3.12 not found on PATH; please install or set PYTHON_BIN" >&2

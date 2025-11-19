@@ -19,6 +19,7 @@ You can automate environment creation with `./setup.sh`:
 - `./setup.sh` creates and activates a virtualenv at `.venv` (fails if it exists).
 - `./setup.sh conda` creates and activates a conda env named `cenv` (fails if it
   already exists). This is needed if one intends to do power spectrum analysis.
+- Any other argument is rejected; use `./setup.sh -h` for usage.
 - Both modes require `python3.12` on `PATH` and install this repo in editable
   mode.
 - For usage/help: `./setup.sh -h`
