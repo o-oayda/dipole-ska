@@ -346,15 +346,18 @@ class PosteriorMixin:
             we use the weighted samples and not the equal weighted samples,
             since the process of boostrap resampling seems to mess with the 2D
             marginals that getdist draws.
-        :param legend_labels: Specify the legend labels to use when plotting
-            multiple runs or a single run.
+        :param legend_labels: Optional, specify the legend labels to use when
+            plotting multiple runs or a single run.
         :param parameters: Optional ordered list of parameter names to include
             in the plot. Names must exist in `posterior.parameter_names`.
         :param paddings: Optional list of float paddings to adjust the x coord
             of each parameter's annotation in the diagonal plots. The length
-            of the list should be equal to the number of parameters being plotted.
-        :param legend_location: Tuple of (x_offset, y_offset) to adjust the
-            legend position when plotting.
+            of the list should be equal to the number of parameters being
+            plotted. For parameters ['D', 'phi', 'theta'], a suitable paddings
+            list is [0,0.13,0.13].
+        :param legend_location: Optional tuple of (x_location, y_location) to
+            adjust the legend position when plotting. For three parameters, a
+            suitable location is (0.665, 0.655).
         '''
         if backend == 'corner':
             base_samples = np.asarray(self.samples, dtype=np.float64)
@@ -369,7 +372,7 @@ class PosteriorMixin:
         if paddings is not None and len(paddings) != len(parameters):
             raise ValueError("The number of paddings must match the number of parameters.")
         
-        if len(legend_labels) is not None and len(legend_labels) != len(self.comparison_runs)+1:
+        if legend_labels is not None and len(legend_labels) != len(self.comparison_runs)+1:
             raise ValueError("The number of legend labels must match the number of runs.")
 
         normalised_coordinates = self._normalise_coordinates_argument(
