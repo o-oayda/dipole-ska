@@ -188,12 +188,15 @@ class PaperPlotter(plots.GetDistPlotter):
             params: list[str],
             latex_labels: list[str],
             runs: list[dict[str, np.ndarray]],
-            colours: list[str]
+            colours: list[str],
+            paddings: list[float] | None = None
         ) -> None:
         '''
         After plotting multiple runs in a single triangle plot, annotate each 1D
         marginal with per-run credible intervals stacked vertically. `runs` is a
         list of dictionaries with keys `name`, `samples`, and optional `weights`.
+        `paddings` allows the x coord of each parameter's text to be adjusted
+        (first element for the first parameter, etc.).
         '''
         if len(runs) <= 1:
             return
@@ -247,7 +250,7 @@ class PaperPlotter(plots.GetDistPlotter):
                 y_position = base_y + run_idx * line_height
                 color = colours[run_idx % len(colours)]
                 ax.text(
-                    text_x,
+                    text_x+(paddings[param_idx] if param_idx < len(paddings) else 0.0),
                     y_position,
                     rf'${label} = {interval_str}$',
                     color=color,
