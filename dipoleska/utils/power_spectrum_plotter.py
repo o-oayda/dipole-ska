@@ -10,7 +10,7 @@ from matplotlib.axes import Axes
 
 
 
-class PowerSpectrumPlotter:
+class LegacyPowerSpectrumPlotter:
     def __init__(self,
                  min_map_number: int,
                  max_map_number: int,
@@ -48,7 +48,8 @@ class PowerSpectrumPlotter:
         loader = MapLoader(self.briggs_weighting, self.configuration)
         for i in range(self.map_min_number, self.map_max_number + 1):
             density_map = loader.load(i)
-            density_contrast = (density_map - np.mean(density_map)) / np.mean(density_map)
+            density_contrast = (density_map - np.mean(density_map)
+                                ) / np.mean(density_map)
             cl = hp.anafast(density_contrast, 
                             lmax=hp.npix2nside(len(density_contrast)))
             cl_collection.append(cl)
@@ -75,7 +76,7 @@ class PowerSpectrumPlotter:
         plt.xlabel('$l$')
         plt.ylabel('$C_l$')
         plt.title(
-            f"Power Spectrum for {self.map_max_number - self.map_min_number + 1} SKA mocks for "
+        f"Power Spectrum for {self.map_max_number - self.map_min_number + 1} SKA mocks for "
             f"Briggs {self.briggs_weighting}_{self.configuration} configuration",
             fontdict={'fontsize': 13}
         )
