@@ -1,10 +1,10 @@
 #%%
 from dipoleska.utils.modulated_map_generator import ModulatedMapGenerator
-from dipoleska.utils.power_spectrum_plotter import PowerSpectrumPlotter
+from dipoleska.powerspectrum.power_spectrum_plotter import PowerSpectrumPlotter
 from dipoleska.utils.map_process import MapProcessor
 from dipoleska.utils.map_read import MapLoader
 from dipoleska.models.multipole import Multipole
-from dipoleska.utils.posterior_power_spectrum import PosteriorPowerSpectrum
+from dipoleska.powerspectrum.posterior_power_spectrum import PosteriorPowerSpectrum
 import healpy as hp
 import numpy as np
 #%%
