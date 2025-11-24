@@ -348,11 +348,13 @@ class MapCollectionLoader:
 
     def _build_identifier(self, entry: dict[str, Any]) -> str:
         base_parts = []
-        # Include source info
-        if entry["attrs"].get("input_variant"):
-            base_parts.append("mapcollections_input")
-        else:
-            base_parts.append("mapcollections")
+
+        # hack: remove data/ska/ part and just extract out the dir name
+        # should always be the third entry since everything goes in data/ska/
+        split_path = entry['path'].split('/')
+        data_dir = split_path[2]
+        base_parts.append(data_dir)
+
         base_parts.append("doppler" if entry["attrs"].get("doppler") else "no_doppler")
         if entry["attrs"].get("newsizes"):
             base_parts.append("newsizes")
