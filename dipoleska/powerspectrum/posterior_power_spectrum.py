@@ -1,12 +1,12 @@
 import healpy as hp
 import numpy as np
-from typing import Callable, Literal
+from typing import Callable, Literal, cast
 from numpy.typing import NDArray
 
 class PosteriorPowerSpectrum:
     def __init__(self,
                sample_chains: NDArray,
-               model: Callable[[NDArray], NDArray],
+               model: Callable[[NDArray], NDArray | tuple[NDArray, NDArray]],
                likelihood: Literal['point', 'poisson', 'poisson_rms',
                                 'general_poisson', 'general_poisson_rms'],
                sample_count: int = 1000
@@ -42,8 +42,11 @@ class PosteriorPowerSpectrum:
         model_samples = self.model(selected_samples)
         if self.likelihood in ['point', 'poisson', 'poisson_rms']:
             posterior_sampled_models = model_samples
+            posterior_sampled_models = cast(NDArray, posterior_sampled_models)
         elif self.likelihood in ['general_poisson', 'general_poisson_rms']:
             posterior_sampled_models, _ = model_samples
+        else:
+            raise ValueError(f'Likelihood ({self.likelihood} not recognised).')
 
         cl_collection = []
         for sample_number in range(posterior_sampled_models.shape[1]):
@@ -56,5 +59,3 @@ class PosteriorPowerSpectrum:
         cl_std = np.std(cl_collection, axis=0)
         return cl_mean, cl_std
     
-    
-        
