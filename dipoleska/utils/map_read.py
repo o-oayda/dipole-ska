@@ -195,7 +195,7 @@ class MapCollectionLoader:
         # since the input_variant files have no snr attribute, drop it from the filename
         elif use_input_variant:
             self.file_configuration = (
-                f'_nside{self.nside}_flux{self.lower_flux_limit}'
+                f'_nside{self.nside}_flux{self.lower_flux_limit}_snr0'
                 f'_z{self.lower_z_limit}_z{self.upper_z_limit}_gal{self.gal_cut}.0'
             )
         else:
