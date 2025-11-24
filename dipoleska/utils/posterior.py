@@ -754,15 +754,22 @@ class PosteriorMixin:
         
         try:
             predictive_maps = self.model(random_samples)
-        
         except NotImplementedError:
             assert model_callable is not None, '''Please pass a callable model
 function to this method when instantiating from an ultranest run number.'''
             predictive_maps = model_callable(random_samples)
-        
         except Exception as e:
             raise Exception(e)
-        
+
+        # Some likelihoods (e.g. general_poisson[_rms]) return tuples such as
+        # (rate_map, dispersion). Posterior predictive visualisations only need
+        # the map itself, so unwrap those structures before stitching them back
+        # onto the full-sky array.
+        if isinstance(predictive_maps, tuple):
+            predictive_maps = predictive_maps[0]
+        elif isinstance(predictive_maps, list):
+            predictive_maps = predictive_maps[0]
+
         # reconstruct map if pixels have been masked
         predictive_maps_for_projview = np.empty((self.npix, n_samples))
         predictive_maps_for_projview[self.boolean_mask, :] = predictive_maps
@@ -779,7 +786,6 @@ function to this method when instantiating from an ultranest run number.'''
                 },
                 **projview_kwargs
             )
-        plt.show()
 
     def sky_direction_posterior(self,
             coordinates: list[str] | None = None,

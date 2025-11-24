@@ -488,8 +488,6 @@ class MapCollectionLoader:
         This method populates the internal cache and does not return a value;
         access results via the `map_collections` property.
         '''
-        base_rms_is_loaded = False
-
         if self.base_dirs:
             entries = self.list_available(refresh=refresh, grouped=False)
             if map_types:
@@ -502,10 +500,14 @@ class MapCollectionLoader:
             if not entries:
                 raise FileNotFoundError("No matching map files found for the given filters.")
             loaded_entries: list[dict[str, Any]] = []
+            attr_keys: dict[tuple[tuple[str, Any], ...], dict[str, Any]] = {}
+            attr_has_rms: set[tuple[tuple[str, Any], ...]] = set()
             for entry in entries:
                 path = entry["path"]
                 ext = entry["ext"]
                 map_type = entry["map_type"]
+                attr_key = tuple(sorted(entry["attrs"].items()))
+                attr_keys.setdefault(attr_key, entry["attrs"])
                 try:
                     if map_type == "rms" and self.use_base_rms:
                         nside_value = entry["attrs"].get("nside")
@@ -515,13 +517,15 @@ class MapCollectionLoader:
                                 "was found for this entry."
                             )
                         path, data = self._load_base_rms_map(int(nside_value))
-                        base_rms_is_loaded = True
+                        attr_has_rms.add(attr_key)
                     else:
                         print(f"Reading in {path}...")
                         if ext == ".fits":
                             data = hp.read_map(path, nest=False)
                         else:
                             data = np.loadtxt(path)
+                        if map_type == "rms":
+                            attr_has_rms.add(attr_key)
                     loaded_entries.append({
                         "map_type": map_type,
                         "attrs": entry["attrs"],
@@ -538,23 +542,25 @@ class MapCollectionLoader:
                         f" Underlying error: {e}"
                     ) from e
 
-            # force load rms map when using base_rms option
-            if self.use_base_rms and not base_rms_is_loaded:
-                nside = loaded_entries[0]["attrs"]["nside"]
-                if nside is None:
-                    raise ValueError(
-                        "Cannot use base RMS map because no nside attribute "
-                        "was found for this entry."
-                    )
-                path, data = self._load_base_rms_map(int(nside))
-                base_rms_is_loaded = True
-                loaded_entries.append({
-                    "map_type": "rms",
-                    # hack, but really all collections attrs should be the same
-                    "attrs": loaded_entries[0]["attrs"],
-                    "path": path,
-                    "data": data,
-                })
+            # Ensure every attribute group receives a base RMS entry, even if
+            # no RMS file existed on disk for that collection.
+            if self.use_base_rms:
+                for key, attrs in attr_keys.items():
+                    if key in attr_has_rms:
+                        continue
+                    nside_value = attrs.get("nside")
+                    if nside_value is None:
+                        raise ValueError(
+                            "Cannot use base RMS map because no nside attribute "
+                            "was found for this entry."
+                        )
+                    path, data = self._load_base_rms_map(int(nside_value))
+                    loaded_entries.append({
+                        "map_type": "rms",
+                        "attrs": dict(attrs),
+                        "path": path,
+                        "data": data,
+                    })
 
             grouped_loaded = self._group_entries(loaded_entries, include_data=True)
             if len(grouped_loaded) == 1 and all(len(g["files"]) == 1 for g in grouped_loaded):
