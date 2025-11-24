@@ -177,8 +177,8 @@ class MapCollectionLoader:
         elif base_dirs is None:
             # Default discovery roots; searched recursively.
             self.base_dirs = [
-                "data/ska/mapcollections",
-                "data/ska/mapcollections_input"
+                "data/ska/mapcollections_24-11-25",
+                "data/ska/mapcollections_input_24-11-25"
             ]
         else:
             self.base_dirs = base_dirs
