@@ -1,12 +1,14 @@
 import healpy as hp
 import numpy as np
-from typing import Callable
+from typing import Callable, Literal, cast
 from numpy.typing import NDArray
 
 class PosteriorPowerSpectrum:
     def __init__(self,
                sample_chains: NDArray,
-               model: Callable[[NDArray], NDArray],
+               model: Callable[[NDArray], NDArray | tuple[NDArray, NDArray]],
+               likelihood: Literal['point', 'poisson', 'poisson_rms',
+                                'general_poisson', 'general_poisson_rms'],
                sample_count: int = 1000
                ):
         '''
@@ -19,6 +21,7 @@ class PosteriorPowerSpectrum:
                               run.
         :param model: A callable model that takes in the sample chains and
                       outputs the corresponding sky maps.
+        :param likelihood: The likelihood type used in the model.
         :param sample_count: The number of posterior samples to draw for
                              power spectrum estimation.
                              
@@ -28,6 +31,7 @@ class PosteriorPowerSpectrum:
         self.sample_chains = sample_chains
         self.model = model
         self.sample_count = sample_count
+        self.likelihood = likelihood
         
     def power_spectrum_calculator(self) -> tuple[NDArray, NDArray]:
         n_total = len(self.sample_chains)
@@ -35,7 +39,14 @@ class PosteriorPowerSpectrum:
         selected_indices = np.random.choice(n_total, size=n_select, 
                                             replace=False)
         selected_samples = self.sample_chains[selected_indices]
-        posterior_sampled_models = self.model(selected_samples)
+        model_samples = self.model(selected_samples)
+        if self.likelihood in ['point', 'poisson', 'poisson_rms']:
+            posterior_sampled_models = model_samples
+            posterior_sampled_models = cast(NDArray, posterior_sampled_models)
+        elif self.likelihood in ['general_poisson', 'general_poisson_rms']:
+            posterior_sampled_models, _ = model_samples
+        else:
+            raise ValueError(f'Likelihood ({self.likelihood} not recognised).')
 
         cl_collection = []
         for sample_number in range(posterior_sampled_models.shape[1]):
@@ -48,5 +59,3 @@ class PosteriorPowerSpectrum:
         cl_std = np.std(cl_collection, axis=0)
         return cl_mean, cl_std
     
-    
-        
