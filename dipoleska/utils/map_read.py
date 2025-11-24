@@ -330,6 +330,9 @@ class MapCollectionLoader:
         prefix = tokens[0]
         map_type = self._infer_map_type(prefix)
         attrs: dict[str, Any] = dict(src_attrs)
+        collection_dir = self._collection_dir(path)
+        if collection_dir:
+            attrs["collection_dir"] = collection_dir
         for token in tokens[1:]:
             key, value = self._split_token(token)
             if key == "z":
@@ -349,19 +352,10 @@ class MapCollectionLoader:
     def _build_identifier(self, entry: dict[str, Any]) -> str:
         base_parts = []
         path = Path(entry["path"])
-        parts = path.parts
-        data_idx = None
-        # essentially assume the dir lives in data/ska/ (as it should),
-        # then get the name of the dir following this in the path
-        for idx in range(len(parts) - 1):
-            if parts[idx] == "data" and parts[idx + 1] == "ska":
-                data_idx = idx
-                break
-        if data_idx is None or data_idx + 2 >= len(parts):
-            raise ValueError(
-                f"Expected map files under data/ska/, found path: {entry['path']}"
-            )
-        base_parts.append(parts[data_idx + 2])
+        collection_dir = entry["attrs"].get("collection_dir")
+        if not collection_dir:
+            collection_dir = self._collection_dir(path) or path.parent.name or "external"
+        base_parts.append(collection_dir)
 
         base_parts.append("doppler" if entry["attrs"].get("doppler") else "no_doppler")
         if entry["attrs"].get("newsizes"):
@@ -372,6 +366,15 @@ class MapCollectionLoader:
             stem_tokens = stem_tokens[1:]  # drop leading map_type prefix
         base_parts.append("_".join(stem_tokens))
         return "-".join(part for part in base_parts if part)
+
+    def _collection_dir(self, path: Path) -> str | None:
+        parts = path.parts
+        for idx in range(len(parts) - 1):
+            if parts[idx] == "data" and parts[idx + 1] == "ska":
+                if idx + 2 < len(parts):
+                    return parts[idx + 2]
+                break
+        return None
 
     def _source_attrs(self, path) -> dict[str, Any]:
         '''
