@@ -348,22 +348,30 @@ class MapCollectionLoader:
 
     def _build_identifier(self, entry: dict[str, Any]) -> str:
         base_parts = []
-
-        # hack: remove data/ska/ part and just extract out the dir name
-        # should always be the third entry since everything goes in data/ska/
-        split_path = entry['path'].split('/')
-        data_dir = split_path[2]
-        base_parts.append(data_dir)
+        path = Path(entry["path"])
+        parts = path.parts
+        data_idx = None
+        # essentially assume the dir lives in data/ska/ (as it should),
+        # then get the name of the dir following this in the path
+        for idx in range(len(parts) - 1):
+            if parts[idx] == "data" and parts[idx + 1] == "ska":
+                data_idx = idx
+                break
+        if data_idx is None or data_idx + 2 >= len(parts):
+            raise ValueError(
+                f"Expected map files under data/ska/, found path: {entry['path']}"
+            )
+        base_parts.append(parts[data_idx + 2])
 
         base_parts.append("doppler" if entry["attrs"].get("doppler") else "no_doppler")
         if entry["attrs"].get("newsizes"):
             base_parts.append("newsizes")
         # Build from filename tokens (excluding map_type and ext)
-        stem_tokens = entry["path"].split("/")[-1].rsplit(".", 1)[0].split("_")
+        stem_tokens = path.name.rsplit(".", 1)[0].split("_")
         if stem_tokens:
             stem_tokens = stem_tokens[1:]  # drop leading map_type prefix
         base_parts.append("_".join(stem_tokens))
-        return "-".join(base_parts)
+        return "-".join(part for part in base_parts if part)
 
     def _source_attrs(self, path) -> dict[str, Any]:
         '''
