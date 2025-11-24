@@ -153,3 +153,35 @@ def test_use_base_rms_sets_paths_for_grouped_entries(tmp_path):
         expected_value = 11 if nside == 64 else 22
         np.testing.assert_array_equal(entry["files"]["rms"]["data"], np.array([expected_value]))
         assert entry["files"]["rms"]["path"] == expected_path
+
+
+def test_use_base_rms_adds_missing_rms_entries_per_collection(tmp_path):
+    base = tmp_path / "data" / "ska" / "mapcollections" / "doppler"
+    base.mkdir(parents=True)
+    (base / "countmap_nside64_flux1e-4_snr5.txt").write_text("1\n")
+    (base / "countmap_nside256_flux1e-4_snr5.txt").write_text("3\n")
+
+    reference_64 = tmp_path / "reference_rms64.txt"
+    reference_256 = tmp_path / "reference_rms256.txt"
+    reference_64.write_text("11\n")
+    reference_256.write_text("22\n")
+
+    loader = MapCollectionLoader(
+        base_dirs=[str(tmp_path / "data" / "ska" / "mapcollections")],
+        use_base_rms=True
+    )
+    loader._base_rms_maps[64] = str(reference_64)
+    loader._base_rms_maps[256] = str(reference_256)
+
+    loader.load()
+    collections = loader.map_collections
+
+    assert isinstance(collections, list)
+    assert len(collections) == 2
+    for entry in collections:
+        assert "rms" in entry["files"]
+        nside = entry["attrs"]["nside"]
+        expected_path = str(reference_64) if nside == 64 else str(reference_256)
+        expected_value = 11 if nside == 64 else 22
+        np.testing.assert_array_equal(entry["files"]["rms"]["data"], np.array([expected_value]))
+        assert entry["files"]["rms"]["path"] == expected_path
