@@ -195,7 +195,7 @@ class MapCollectionLoader:
         # since the input_variant files have no snr attribute, drop it from the filename
         elif use_input_variant:
             self.file_configuration = (
-                f'_nside{self.nside}_flux{self.lower_flux_limit}'
+                f'_nside{self.nside}_flux{self.lower_flux_limit}_snr0'
                 f'_z{self.lower_z_limit}_z{self.upper_z_limit}_gal{self.gal_cut}.0'
             )
         else:
@@ -475,6 +475,8 @@ class MapCollectionLoader:
         This method populates the internal cache and does not return a value;
         access results via the `map_collections` property.
         '''
+        base_rms_is_loaded = False
+
         if self.base_dirs:
             entries = self.list_available(refresh=refresh, grouped=False)
             if map_types:
@@ -500,6 +502,7 @@ class MapCollectionLoader:
                                 "was found for this entry."
                             )
                         path, data = self._load_base_rms_map(int(nside_value))
+                        base_rms_is_loaded = True
                     else:
                         print(f"Reading in {path}...")
                         if ext == ".fits":
@@ -521,6 +524,25 @@ class MapCollectionLoader:
                         f"Cannot read file for map type '{map_type}' at {path}."
                         f" Underlying error: {e}"
                     ) from e
+
+            # force load rms map when using base_rms option
+            if self.use_base_rms and not base_rms_is_loaded:
+                nside = loaded_entries[0]["attrs"]["nside"]
+                if nside is None:
+                    raise ValueError(
+                        "Cannot use base RMS map because no nside attribute "
+                        "was found for this entry."
+                    )
+                path, data = self._load_base_rms_map(int(nside))
+                base_rms_is_loaded = True
+                loaded_entries.append({
+                    "map_type": "rms",
+                    # hack, but really all collections attrs should be the same
+                    "attrs": loaded_entries[0]["attrs"],
+                    "path": path,
+                    "data": data,
+                })
+
             grouped_loaded = self._group_entries(loaded_entries, include_data=True)
             if len(grouped_loaded) == 1 and all(len(g["files"]) == 1 for g in grouped_loaded):
                 # Simple case: one attribute set, one map per type; keep legacy-ish dict
