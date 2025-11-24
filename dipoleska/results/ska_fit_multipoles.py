@@ -44,12 +44,31 @@ def build_run_name(args: argparse.Namespace) -> str:
     )
 
 
+def _get_mpi_rank() -> int:
+    """Best-effort MPI rank detection via common environment variables."""
+    for env_var in (
+        'OMPI_COMM_WORLD_RANK',
+        'PMI_RANK',
+        'PMIX_RANK',
+        'MV2_COMM_WORLD_RANK',
+    ):
+        value = os.environ.get(env_var)
+        if value is None:
+            continue
+        try:
+            return int(value)
+        except ValueError:
+            continue
+    return 0
+
+
 def main() -> None:
     OUTPUT_DIR = 'dipoleska/results/runs'
 
     parser = build_parser()
     args = parser.parse_args()
-    plot_enabled = not args.no_plots
+    mpi_rank = _get_mpi_rank()
+    plot_enabled = mpi_rank == 0 and not args.no_plots # only plot on rank 0 worker
 
     loader = MapCollectionLoader(use_base_rms=True)
     loader.load(filter_attrs={'newsizes': True})
