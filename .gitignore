@@ -200,3 +200,5 @@ scratch/
 # .txt files from mapcollections
 data/ska/mapcollections/*
 data/ska/mapcollections_input/*
+data/ska/mapcollections_24-11-25/*
+data/ska/mapcollections_input_24-11-25/*
