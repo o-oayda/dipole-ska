@@ -1,22 +1,20 @@
 import os
 from typing import Any, cast
 from dipoleska.models.priors import Prior
+from dipoleska.powerspectrum.posterior_power_spectrum import PosteriorPowerSpectrum
 from dipoleska.utils.map_process import MapProcessor
 from dipoleska.utils.map_read import MapCollectionLoader
 from dipoleska.utils.plotting import MapPlotter
 from dipoleska.models.multipole import Multipole
 import matplotlib.pyplot as plt
 import argparse
+import numpy as np
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Fit multipoles to SKA maps."
     )
-    # parser.add_argument(
-    #     '--newsizes',
-    #     action='store_true'
-    # )
     parser.add_argument(
         '--likelihood',
         choices=['general_poisson', 'general_poisson_rms'],
@@ -71,7 +69,7 @@ def main() -> None:
     plot_enabled = mpi_rank == 0 and not args.no_plots # only plot on rank 0 worker
 
     loader = MapCollectionLoader(use_base_rms=True)
-    loader.load(filter_attrs={'newsizes': True})
+    loader.load()
     data = loader.map_collections
     data = cast(list[dict[str, Any]], data)
 
@@ -141,7 +139,21 @@ def main() -> None:
                 save_path=os.path.join(RUN_DIR, 'sky_proj.pdf'),
                 contour_levels=[1, 2]
             )
+            model.posterior_predictive_check(
+                save_path=os.path.join(RUN_DIR, 'ppc.pdf'),
+                coord=['C', 'G']
+            )
             plt.close()
+
+        # posteriorps = PosteriorPowerSpectrum(
+        #     sample_chains=model.samples,
+        #     model=model.model,
+        #     likelihood=LIKELIHOOD,
+        #     sample_count=500
+        # )
+        # cl_mean, cl_std = posteriorps.power_spectrum_calculator()
+        # np.save(os.path.join(RUN_DIR, 'cl_mean.npy'), cl_mean)
+        # np.save(os.path.join(RUN_DIR, 'cl_std.npy'), cl_std)
 
 
 if __name__ == '__main__':
