@@ -330,6 +330,9 @@ class MapCollectionLoader:
         prefix = tokens[0]
         map_type = self._infer_map_type(prefix)
         attrs: dict[str, Any] = dict(src_attrs)
+        collection_dir = self._collection_dir(path)
+        if collection_dir:
+            attrs["collection_dir"] = collection_dir
         for token in tokens[1:]:
             key, value = self._split_token(token)
             if key == "z":
@@ -348,20 +351,30 @@ class MapCollectionLoader:
 
     def _build_identifier(self, entry: dict[str, Any]) -> str:
         base_parts = []
-        # Include source info
-        if entry["attrs"].get("input_variant"):
-            base_parts.append("mapcollections_input")
-        else:
-            base_parts.append("mapcollections")
+        path = Path(entry["path"])
+        collection_dir = entry["attrs"].get("collection_dir")
+        if not collection_dir:
+            collection_dir = self._collection_dir(path) or path.parent.name or "external"
+        base_parts.append(collection_dir)
+
         base_parts.append("doppler" if entry["attrs"].get("doppler") else "no_doppler")
         if entry["attrs"].get("newsizes"):
             base_parts.append("newsizes")
         # Build from filename tokens (excluding map_type and ext)
-        stem_tokens = entry["path"].split("/")[-1].rsplit(".", 1)[0].split("_")
+        stem_tokens = path.name.rsplit(".", 1)[0].split("_")
         if stem_tokens:
             stem_tokens = stem_tokens[1:]  # drop leading map_type prefix
         base_parts.append("_".join(stem_tokens))
-        return "-".join(base_parts)
+        return "-".join(part for part in base_parts if part)
+
+    def _collection_dir(self, path: Path) -> str | None:
+        parts = path.parts
+        for idx in range(len(parts) - 1):
+            if parts[idx] == "data" and parts[idx + 1] == "ska":
+                if idx + 2 < len(parts):
+                    return parts[idx + 2]
+                break
+        return None
 
     def _source_attrs(self, path) -> dict[str, Any]:
         '''
