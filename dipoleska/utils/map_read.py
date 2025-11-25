@@ -493,10 +493,17 @@ class MapCollectionLoader:
             if map_types:
                 entries = [e for e in entries if e["map_type"] in map_types]
             if filter_attrs:
-                entries = [
-                    e for e in entries
-                    if all(e["attrs"].get(k) == v for k, v in filter_attrs.items())
-                ]
+                def _entry_matches(entry: dict[str, Any]) -> bool:
+                    for key, value in filter_attrs.items():
+                        if key == "id":
+                            identifier = self._build_identifier(entry)
+                            if identifier != value:
+                                return False
+                        else:
+                            if entry["attrs"].get(key) != value:
+                                return False
+                    return True
+                entries = [e for e in entries if _entry_matches(e)]
             if not entries:
                 raise FileNotFoundError("No matching map files found for the given filters.")
             loaded_entries: list[dict[str, Any]] = []
