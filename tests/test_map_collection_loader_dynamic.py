@@ -46,6 +46,31 @@ def test_load_filters_and_reads_matching_file(tmp_path):
     np.testing.assert_array_equal(loaded, np.array([[10, 20], [30, 40]]))
 
 
+def test_load_filters_by_identifier(tmp_path):
+    base = tmp_path / "data" / "ska" / "mapcollections" / "doppler"
+    base.mkdir(parents=True)
+    (base / "countmap_nside64_flux1e-4_snr5.txt").write_text("1 2\n3 4\n")
+    (base / "rmsmap_nside64_flux1e-4_snr5.txt").write_text("5 6\n7 8\n")
+    (base / "countmap_nside256_flux1e-4_snr5.txt").write_text("9 10\n11 12\n")
+    (base / "rmsmap_nside256_flux1e-4_snr5.txt").write_text("13 14\n15 16\n")
+
+    loader = MapCollectionLoader(base_dirs=[str(tmp_path / "data" / "ska" / "mapcollections")])
+    entries = loader.list_available()
+    assert len(entries) == 2
+    target_entry = entries[0]
+    target_id = target_entry["id"]
+    expected_counts = np.loadtxt(target_entry["files"]["counts"]["path"])
+
+    loader.load(filter_attrs={"id": target_id})
+    collections = loader.map_collections
+    assert isinstance(collections, list)
+    assert len(collections) == 1
+    assert collections[0]["id"] == target_id
+    np.testing.assert_array_equal(
+        collections[0]["files"]["counts"]["data"],
+        expected_counts
+    )
+
 def test_map_collections_property_uses_discovery(tmp_path):
     base = tmp_path / "data" / "ska" / "mapcollections" / "doppler"
     base.mkdir(parents=True)
