@@ -9,6 +9,9 @@ from dipoleska.models.multipole import Multipole
 import matplotlib.pyplot as plt
 import argparse
 import numpy as np
+import matplotlib as mpl
+import contextlib
+import os
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -61,6 +64,8 @@ def _get_mpi_rank() -> int:
 
 
 def main() -> None:
+    mpl.rcParams["text.usetex"] = False
+
     OUTPUT_DIR = 'dipoleska/results/runs'
 
     parser = build_parser()
@@ -68,15 +73,22 @@ def main() -> None:
     mpi_rank = _get_mpi_rank()
     plot_enabled = mpi_rank == 0 and not args.no_plots # only plot on rank 0 worker
 
-    loader = MapCollectionLoader(use_base_rms=True)
-    loader.load()
+    # suppress print outs
+    with open(os.devnull, "w") as devnull:
+        with contextlib.redirect_stdout(devnull):
+            loader = MapCollectionLoader(use_base_rms=True)
+            loader.load()
+
     data = loader.map_collections
     data = cast(list[dict[str, Any]], data)
 
     for collection in data:
         dmap = collection['files']['counts']['data']
         rmsmap = collection['files']['rms']['data']
+
         COLLECTION_ID = collection['id']
+        print(f'Starting on map ID {COLLECTION_ID}...')
+
         LIKELIHOOD = args.likelihood
         run_name = f'{COLLECTION_ID}_{LIKELIHOOD}_ells{'-'.join(map(str, args.ells))}'
         RUN_DIR = os.path.join(OUTPUT_DIR, run_name)
@@ -103,7 +115,7 @@ def main() -> None:
             )
             fig.savefig(os.path.join(RUN_DIR, 'smoothed_dmap.pdf'), bbox_inches='tight')
 
-            plt.close()
+            plt.close('all')
 
         if 1 in args.ells:
             prior = Prior(choose_prior={'M1': ['Uniform', 0., 0.05]})
@@ -126,7 +138,8 @@ def main() -> None:
         model.run_nested_sampling(
             step=step,
             run_name=run_name, 
-            output_dir=OUTPUT_DIR
+            output_dir=OUTPUT_DIR,
+            run_kwargs={'viz_callback': False, 'show_status': False}
         )
 
         if plot_enabled:
@@ -143,7 +156,7 @@ def main() -> None:
                 save_path=os.path.join(RUN_DIR, 'ppc.pdf'),
                 coord=['C', 'G']
             )
-            plt.close()
+            plt.close('all')
 
         # posteriorps = PosteriorPowerSpectrum(
         #     sample_chains=model.samples,
