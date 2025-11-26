@@ -1,3 +1,4 @@
+import gc
 import os
 from typing import Any, cast
 from dipoleska.models.priors import Prior
@@ -11,7 +12,6 @@ import argparse
 import numpy as np
 import matplotlib as mpl
 import contextlib
-import os
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -34,6 +34,11 @@ def build_parser() -> argparse.ArgumentParser:
         nargs='+',
         default=[0, 1, 2],
         help='Multipole orders to fit (only used for the multipole model).'
+    )
+    parser.add_argument(
+        '--collection-id',
+        required=True,
+        help='Identifier of the map collection to analyse.'
     )
     return parser
 
@@ -73,31 +78,39 @@ def main() -> None:
     mpi_rank = _get_mpi_rank()
     plot_enabled = mpi_rank == 0 and not args.no_plots # only plot on rank 0 worker
 
-    # suppress print outs
-    with open(os.devnull, "w") as devnull:
-        with contextlib.redirect_stdout(devnull):
-            loader = MapCollectionLoader(use_base_rms=True)
-            loader.load()
+    loader = MapCollectionLoader(use_base_rms=True)
+    collection_id = args.collection_id
+    print(f'Starting on map ID {collection_id}...')
 
-    data = loader.map_collections
-    data = cast(list[dict[str, Any]], data)
+    with open(os.devnull, "w") as devnull, contextlib.redirect_stdout(devnull):
+        loader.load(filter_attrs={'id': collection_id})
 
-    for collection in data:
-        dmap = collection['files']['counts']['data']
-        rmsmap = collection['files']['rms']['data']
+    loaded = loader.map_collections
+    loaded = cast(list, loaded)
+    if not loaded:
+        raise RuntimeError(f'Collection ID {collection_id} was not found.')
+    if len(loaded) > 1:
+        raise RuntimeError(f'Collection ID {collection_id} returned multiple matches.')
+    collection = loaded[0]
 
-        COLLECTION_ID = collection['id']
-        print(f'Starting on map ID {COLLECTION_ID}...')
+    dmap = collection['files']['counts']['data']
+    rmsmap = collection['files']['rms']['data']
 
-        LIKELIHOOD = args.likelihood
-        run_name = f'{COLLECTION_ID}_{LIKELIHOOD}_ells{'-'.join(map(str, args.ells))}'
-        RUN_DIR = os.path.join(OUTPUT_DIR, run_name)
-        os.makedirs(RUN_DIR, exist_ok=True)
+    LIKELIHOOD = args.likelihood
+    run_name = f'{collection_id}_{LIKELIHOOD}_ells{'-'.join(map(str, args.ells))}'
+    RUN_DIR = os.path.join(OUTPUT_DIR, run_name)
+    os.makedirs(RUN_DIR, exist_ok=True)
+    
+    processor = None
+    masked_dmap = None
+    masked_rmsmap = None
+    model: Multipole | None = None
 
+    try:
         processor = MapProcessor([dmap, rmsmap])
-        if 'gal10.0' in COLLECTION_ID:
+        if 'gal10.0' in collection_id:
             mask = 'gal10_ps'
-        elif 'gal5.0' in COLLECTION_ID:
+        elif 'gal5.0' in collection_id:
             mask = 'gal5_ps'
         else:
             raise Exception('Not sure which mask to use yet.')
@@ -129,12 +142,9 @@ def main() -> None:
             likelihood=LIKELIHOOD,
             rms_map=masked_rmsmap
         )
-        step = False
-        for ell in args.ells:
-            if ell > 1:
-                step = True
-                break
+        step = any(ell > 1 for ell in args.ells)
 
+        model._disable_ultranest_logging()
         model.run_nested_sampling(
             step=step,
             run_name=run_name, 
@@ -149,7 +159,7 @@ def main() -> None:
             )
             model.sky_direction_posterior(
                 coordinates=['equatorial', 'galactic'],
-                save_path=os.path.join(RUN_DIR, 'sky_proj.pdf'),
+                save_path=os.path.join(RUN_DIR, 'sky_proj.png'),
                 contour_levels=[1, 2]
             )
             model.posterior_predictive_check(
@@ -157,6 +167,10 @@ def main() -> None:
                 coord=['C', 'G']
             )
             plt.close('all')
+    finally:
+        loader.clear_cache()
+        del processor, masked_dmap, masked_rmsmap, model
+        gc.collect()
 
         # posteriorps = PosteriorPowerSpectrum(
         #     sample_chains=model.samples,
