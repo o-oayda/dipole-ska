@@ -63,7 +63,7 @@ class Prior:
     
     def change_prior(self,
             prior_index: int,
-            new_prior: list[str | (float | np.float_)] 
+            new_prior: list[str | (float | np.float64)] 
         ) -> None:
         '''
         Change the sampling distribution for one of the parameters.
@@ -80,7 +80,7 @@ class Prior:
     def add_prior(self,
             prior_index: int,
             prior_name: str,
-            prior_alias: list[str | (float | np.float_)]
+            prior_alias: list[str | (float | np.float64)]
         ) -> None:
         '''
         Insert a new prior definition into the list of transforms.
@@ -236,7 +236,7 @@ class Prior:
         return distribution_to_function[distribution]
     
     def _prior_alias_to_callable(self,
-            prior_alias: list[str | (float | np.float_)]
+            prior_alias: list[str | (float | np.float64)]
     ) -> Callable:
         '''
         Convert a prior alias (distribution name and bounds) into the callable
@@ -271,8 +271,8 @@ class Prior:
     
     def _construct_callable(self,
             callable_prior_function: Callable,
-            minimum: float | np.float_,
-            maximum: float | np.float_
+            minimum: float | np.float64,
+            maximum: float | np.float64
     ) -> Callable:
         '''
         Make wrapper function to be used when calling this class's `transform`

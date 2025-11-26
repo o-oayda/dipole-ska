@@ -235,8 +235,8 @@ def matplotlib_latex(
 class MapPlotter:
     def __init__(
             self,
-            density_map: NDArray[np.int_ | np.float_]
-            | Sequence[NDArray[np.int_ | np.float_]]
+            density_map: NDArray[np.int_ | np.float64]
+            | Sequence[NDArray[np.int_ | np.float64]]
         ) -> None:
         '''
         Plot and optionally smooth one or more HEALPix density maps. Accepts a
@@ -260,9 +260,9 @@ class MapPlotter:
 
     @staticmethod
     def _validate_density_maps(
-            density_map: NDArray[np.int_ | np.float_]
-            | Sequence[NDArray[np.int_ | np.float_]]
-        ) -> list[NDArray[np.int_ | np.float_]]:
+            density_map: NDArray[np.int_ | np.float64]
+            | Sequence[NDArray[np.int_ | np.float64]]
+        ) -> list[NDArray[np.int_ | np.float64]]:
         '''
         Ensure the provided density map(s) are valid NumPy arrays compatible
         with healpy projections.
@@ -284,7 +284,7 @@ class MapPlotter:
                 'arrays.'
             )
 
-        validated: list[NDArray[np.int_ | np.float_]] = []
+        validated: list[NDArray[np.int_ | np.float64]] = []
         for idx, map_array in enumerate(maps):
             if not isinstance(map_array, np.ndarray):
                 raise TypeError(
@@ -333,7 +333,7 @@ class MapPlotter:
 
     def _plot_maps(
             self,
-            maps_to_plot: Sequence[NDArray[np.int_ | np.float_]],
+            maps_to_plot: Sequence[NDArray[np.int_ | np.float64]],
             cmap: str,
             cmap_alpha: float,
             projview_dict: dict,
@@ -492,7 +492,7 @@ class MapPlotter:
 
     @staticmethod
     def moving_average_smooth(
-            density_map: NDArray[np.int_ | np.float_],
+            density_map: NDArray[np.int_ | np.float64],
             weights: NDArray[np.float64] | None = None,
             angle_scale: float = 1.
     ) -> NDArray[np.float64]:

@@ -228,7 +228,7 @@ class MapProcessor:
                             lat: float,
                             input_frame: Literal['C', 'G', 'E'],
                             output_frame: Literal['C', 'G', 'E']
-                            ) -> tuple[np.float_, np.float_]:
+                            ) -> tuple[np.float64, np.float64]:
         '''
         Convert angular coordinates from one frame to another. 
         We use the healpy Rotator class to do this.
@@ -253,9 +253,9 @@ class MapProcessor:
     
     @staticmethod
     def _queried_cap(
-            lon: np.float_,
-            lat: np.float_,
-            radius: np.float_ | float,
+            lon: np.float64,
+            lat: np.float64,
+            radius: np.float64 | float,
             nside: int
     ) -> NDArray[np.int_]:
         '''
