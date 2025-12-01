@@ -320,6 +320,7 @@ class PosteriorMixin:
             parameters: Sequence[str] | None = None,
             paddings: list[float] | None = None,
             legend_location: tuple[float, float] | None = None,
+            colors: list[str] | None = None,
             **kwargs
         ) -> None:
         '''
@@ -358,6 +359,10 @@ class PosteriorMixin:
         :param legend_location: Optional tuple of (x_location, y_location) to
             adjust the legend position when plotting. For three parameters, a
             suitable location is (0.665, 0.655).
+        :param colors: Optional list of colors to use for each run when using
+            the getdist backend. The length of the list should be equal to
+            the number of runs being plotted. If None, a default set of
+            colors is used.
         '''
         if backend == 'corner':
             base_samples = np.asarray(self.samples, dtype=np.float64)
@@ -623,18 +628,23 @@ class PosteriorMixin:
                     new_colors = list(run_colors)
                     if len(original_solid_colors) > len(run_colors):
                         new_colors.extend(original_solid_colors[len(run_colors):])
-                    plotter.settings.solid_colors = new_colors
+                    plotter.settings.solid_colors = new_colors if colors is None else colors
+
+            if colors is not None:
+                run_colors = list(colors)[::-1]
 
             try:
                 plotter.triangle_plot(
                     mc_runs,
                     params=sanitized_names,
                     legend_loc=legend_location,
+                    contour_args={'alpha': 0.6},
+                    colors=colors,
                     **default_triangle_options
                 )
             finally:
                 if original_solid_colors is not None:
-                    plotter.settings.solid_colors = original_solid_colors
+                    plotter.settings.solid_colors = original_solid_colors if colors is None else colors
 
             if len(mc_runs) > 1 and run_colors is not None:
                 # GetDist draws datasets in reverse order for layering, so the colours

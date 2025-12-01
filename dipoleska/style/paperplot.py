@@ -171,9 +171,9 @@ class PaperPlotter(plots.GetDistPlotter):
         color = line_kwargs.get("color") or self.settings.axis_marker_color
         width = self._scaled_linewidth(self.settings.linewidth_contour)
 
-        axis.axvline(q_median, color=color, ls="--", lw=width, alpha=0.8)
-        axis.axvline(q_lower, color=color, ls="--", lw=width, alpha=0.6)
-        axis.axvline(q_upper, color=color, ls="--", lw=width, alpha=0.6)
+        # axis.axvline(q_median, color=color, ls="--", lw=width, alpha=0.8)
+        # axis.axvline(q_lower, color=color, ls="--", lw=width, alpha=0.6)
+        # axis.axvline(q_upper, color=color, ls="--", lw=width, alpha=0.6)
 
         label = param_info.label or param_info.name
         axis.set_title(
