@@ -233,6 +233,12 @@ class PaperPlotter(plots.GetDistPlotter):
         line_height = 0.15
         text_x = 0.05
 
+        if paddings is not None:
+            assert len(paddings) == len(params), (
+                'List of paddings should have length equal to the number of '
+                'params plotted.'
+            )
+
         for param_idx, ax in enumerate(diag_axes):
             if ax is None:
                 continue
@@ -249,8 +255,14 @@ class PaperPlotter(plots.GetDistPlotter):
                 interval_str = self._format_interval(q_median, q_lower, q_upper)
                 y_position = base_y + run_idx * line_height
                 color = colours[run_idx % len(colours)]
+
+                if paddings is None:
+                    extra_x = 0
+                else:
+                    extra_x = paddings[param_idx]
+
                 ax.text(
-                    text_x+(paddings[param_idx] if param_idx < len(paddings) else 0.0),
+                    text_x+extra_x,
                     y_position,
                     rf'${label} = {interval_str}$',
                     color=color,

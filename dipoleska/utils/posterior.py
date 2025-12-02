@@ -369,7 +369,14 @@ class PosteriorMixin:
                 else np.asarray(self.weights, dtype=np.float64)
             )
 
-        if paddings is not None and len(paddings) != len(parameters):
+        # we check paddings again (if params is None) in annotate_multi_run_intervals
+        if (
+                (paddings is not None)
+            and
+                (parameters is not None)
+            and
+                (len(paddings) != len(parameters))
+        ):
             raise ValueError("The number of paddings must match the number of parameters.")
         
         if legend_labels is not None and len(legend_labels) != len(self.comparison_runs)+1:
