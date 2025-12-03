@@ -239,6 +239,22 @@ class PaperPlotter(plots.GetDistPlotter):
                 'params plotted.'
             )
 
+        # The stacked text can easily extend above the axes when there are many
+        # runs; reserve additional headroom before adding annotations.
+        if diag_axes:
+            y_span_needed = base_y + (len(runs) - 1) * line_height
+            overflow = max(0.0, y_span_needed - 1.0)
+            sample_ax = next((ax for ax in diag_axes if ax is not None), None)
+            if (overflow > 0.0) and (sample_ax is not None):
+                fig = sample_ax.figure
+                bbox = sample_ax.get_position()
+                extra_top = overflow * bbox.height
+                buffer = 0.02
+                current_top = getattr(fig.subplotpars, 'top', 0.9)
+                new_top = max(0.1, current_top - extra_top - buffer)
+                if new_top < current_top:
+                    fig.subplots_adjust(top=new_top)
+
         for param_idx, ax in enumerate(diag_axes):
             if ax is None:
                 continue
@@ -261,7 +277,7 @@ class PaperPlotter(plots.GetDistPlotter):
                 else:
                     extra_x = paddings[param_idx]
 
-                ax.text(
+                annotation = ax.text(
                     text_x+extra_x,
                     y_position,
                     rf'${label} = {interval_str}$',
@@ -271,6 +287,9 @@ class PaperPlotter(plots.GetDistPlotter):
                     transform=ax.transAxes,
                     fontsize=fontsize
                 )
+                annotation.set_clip_on(False)
+                if hasattr(self, 'extra_artists'):
+                    self.extra_artists.append(annotation)
 
 
 style_name = "paperplot"
