@@ -189,7 +189,8 @@ class PaperPlotter(plots.GetDistPlotter):
             latex_labels: list[str],
             runs: list[dict[str, np.ndarray]],
             colours: list[str],
-            paddings: list[float] | None = None
+            paddings: list[float] | None = None,
+            title_line_padding: float = 0.15
         ) -> None:
         '''
         After plotting multiple runs in a single triangle plot, annotate each 1D
@@ -230,7 +231,7 @@ class PaperPlotter(plots.GetDistPlotter):
             self.settings.axes_fontsize
         )
         base_y = 1.03
-        line_height = 0.15
+        line_height = title_line_padding
         text_x = 0.05
 
         if paddings is not None:
@@ -251,9 +252,12 @@ class PaperPlotter(plots.GetDistPlotter):
                 extra_top = overflow * bbox.height
                 buffer = 0.02
                 current_top = getattr(fig.subplotpars, 'top', 0.9)
-                new_top = max(0.1, current_top - extra_top - buffer)
-                if new_top < current_top:
-                    fig.subplots_adjust(top=new_top)
+                available = 1.0 - current_top
+                required = extra_top + buffer
+                if required > available:
+                    new_top = max(0.1, 1.0 - required)
+                    if new_top < current_top:
+                        fig.subplots_adjust(top=new_top)
 
         for param_idx, ax in enumerate(diag_axes):
             if ax is None:

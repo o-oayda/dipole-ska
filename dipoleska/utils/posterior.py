@@ -319,6 +319,7 @@ class PosteriorMixin:
             legend_labels: list[str] | None = None,
             parameters: Sequence[str] | None = None,
             paddings: list[float] | None = None,
+            title_line_padding: float = 0.15,
             legend_location: tuple[float, float] | None = None,
             **kwargs
         ) -> None:
@@ -355,6 +356,10 @@ class PosteriorMixin:
             of the list should be equal to the number of parameters being
             plotted. For parameters ['D', 'phi', 'theta'], a suitable paddings
             list is [0,0.13,0.13].
+        :param title_line_padding: If creating a corner with multiple runs,
+            adjust this value to change the spacing between the 1D marginal
+            titles. The default value should generally be sufficient, but
+            increasing it will add more spacing (and decreasing less spacing).
         :param legend_location: Optional tuple of (x_location, y_location) to
             adjust the legend position when plotting. For three parameters, a
             suitable location is (0.665, 0.655).
@@ -663,7 +668,8 @@ class PosteriorMixin:
                     latex_labels,
                     run_specs,
                     annotation_colors,
-                    paddings
+                    paddings,
+                    title_line_padding=title_line_padding
                 )
 
             if save_path is not None:
