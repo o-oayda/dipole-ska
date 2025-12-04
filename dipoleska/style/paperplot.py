@@ -189,7 +189,8 @@ class PaperPlotter(plots.GetDistPlotter):
             latex_labels: list[str],
             runs: list[dict[str, np.ndarray]],
             colours: list[str],
-            paddings: list[float] | None = None
+            paddings: list[float] | None = None,
+            title_line_padding: float = 0.15
         ) -> None:
         '''
         After plotting multiple runs in a single triangle plot, annotate each 1D
@@ -230,8 +231,33 @@ class PaperPlotter(plots.GetDistPlotter):
             self.settings.axes_fontsize
         )
         base_y = 1.03
-        line_height = 0.15
+        line_height = title_line_padding
         text_x = 0.05
+
+        if paddings is not None:
+            assert len(paddings) == len(params), (
+                'List of paddings should have length equal to the number of '
+                'params plotted.'
+            )
+
+        # The stacked text can easily extend above the axes when there are many
+        # runs; reserve additional headroom before adding annotations.
+        if diag_axes:
+            y_span_needed = base_y + (len(runs) - 1) * line_height
+            overflow = max(0.0, y_span_needed - 1.0)
+            sample_ax = next((ax for ax in diag_axes if ax is not None), None)
+            if (overflow > 0.0) and (sample_ax is not None):
+                fig = sample_ax.figure
+                bbox = sample_ax.get_position()
+                extra_top = overflow * bbox.height
+                buffer = 0.02
+                current_top = getattr(fig.subplotpars, 'top', 0.9)
+                available = 1.0 - current_top
+                required = extra_top + buffer
+                if required > available:
+                    new_top = max(0.1, 1.0 - required)
+                    if new_top < current_top:
+                        fig.subplots_adjust(top=new_top)
 
         for param_idx, ax in enumerate(diag_axes):
             if ax is None:
@@ -249,8 +275,14 @@ class PaperPlotter(plots.GetDistPlotter):
                 interval_str = self._format_interval(q_median, q_lower, q_upper)
                 y_position = base_y + run_idx * line_height
                 color = colours[run_idx % len(colours)]
-                ax.text(
-                    text_x+(paddings[param_idx] if param_idx < len(paddings) else 0.0),
+
+                if paddings is None:
+                    extra_x = 0
+                else:
+                    extra_x = paddings[param_idx]
+
+                annotation = ax.text(
+                    text_x+extra_x,
                     y_position,
                     rf'${label} = {interval_str}$',
                     color=color,
@@ -259,6 +291,9 @@ class PaperPlotter(plots.GetDistPlotter):
                     transform=ax.transAxes,
                     fontsize=fontsize
                 )
+                annotation.set_clip_on(False)
+                if hasattr(self, 'extra_artists'):
+                    self.extra_artists.append(annotation)
 
 
 style_name = "paperplot"
