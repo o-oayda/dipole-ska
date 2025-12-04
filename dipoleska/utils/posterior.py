@@ -322,6 +322,7 @@ class PosteriorMixin:
             title_line_padding: float = 0.15,
             legend_location: tuple[float, float] | None = None,
             colors: list[str] | None = None,
+            disable_quantile_lines: bool = False,
             **kwargs
         ) -> None:
         '''
@@ -368,6 +369,9 @@ class PosteriorMixin:
             the getdist backend. The length of the list should be equal to
             the number of runs being plotted. If None, a default set of
             colors is used.
+        :param disable_quantile_lines: Choose whether or not to disable the
+            dashed lines demarking each parameter's credible interval in the 1D
+            marginals.
         '''
         if backend == 'corner':
             base_samples = np.asarray(self.samples, dtype=np.float64)
@@ -612,7 +616,11 @@ class PosteriorMixin:
                 mc.updateSettings({'ignore_limits': True})
                 mc_runs.append(mc)
 
+            # this returns an instance of PaperPlotter, we just call a method
+            # to disable the lines
             plotter = plots.get_subplot_plotter(style=paperplot_style.style_name)
+            if disable_quantile_lines:
+                plotter.disable_quantile_lines() # pyright: ignore[reportOptionalCall]
 
             default_triangle_options = {
                 'filled': True,

@@ -41,6 +41,9 @@ class PaperPlotter(plots.GetDistPlotter):
         self.settings.title_limit_labels = True
         self.settings.title_limit_fontsize = 1. * self.settings.axes_labelsize
 
+        # disable dashed lines signifying credible interval
+        self._disable_quantile_lines = False
+
     @staticmethod
     def _weighted_quantiles(values: np.ndarray, weights: np.ndarray | None, quantiles: list[float]) -> np.ndarray:
         data = np.asarray(values, dtype=np.float64)
@@ -122,7 +125,19 @@ class PaperPlotter(plots.GetDistPlotter):
 
         return rf"{median_str}^{{+{plus_str}}}_{{-{minus_str}}}"
 
-    def add_1d(self, root, param, plotno=0, normalized=None, ax=None, title_limit=None, **kwargs):
+    def disable_quantile_lines(self) -> None:
+        self._disable_quantile_lines = True
+
+    def add_1d(
+            self, 
+            root, 
+            param, 
+            plotno=0, 
+            normalized=None, 
+            ax=None, 
+            title_limit=None,
+            **kwargs
+    ):
         param_info = self._check_param(root, param)
         result = super().add_1d(root, param_info, plotno=plotno, normalized=normalized, ax=ax, title_limit=title_limit, **kwargs)
 
@@ -171,9 +186,10 @@ class PaperPlotter(plots.GetDistPlotter):
         color = line_kwargs.get("color") or self.settings.axis_marker_color
         width = self._scaled_linewidth(self.settings.linewidth_contour)
 
-        # axis.axvline(q_median, color=color, ls="--", lw=width, alpha=0.8)
-        # axis.axvline(q_lower, color=color, ls="--", lw=width, alpha=0.6)
-        # axis.axvline(q_upper, color=color, ls="--", lw=width, alpha=0.6)
+        if not self._disable_quantile_lines:
+            axis.axvline(q_median, color=color, ls="--", lw=width, alpha=0.8)
+            axis.axvline(q_lower, color=color, ls="--", lw=width, alpha=0.6)
+            axis.axvline(q_upper, color=color, ls="--", lw=width, alpha=0.6)
 
         label = param_info.label or param_info.name
         axis.set_title(
