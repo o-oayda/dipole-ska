@@ -41,6 +41,9 @@ class PaperPlotter(plots.GetDistPlotter):
         self.settings.title_limit_labels = True
         self.settings.title_limit_fontsize = 1. * self.settings.axes_labelsize
 
+        # disable dashed lines signifying credible interval
+        self._disable_quantile_lines = False
+
     @staticmethod
     def _weighted_quantiles(values: np.ndarray, weights: np.ndarray | None, quantiles: list[float]) -> np.ndarray:
         data = np.asarray(values, dtype=np.float64)
@@ -122,7 +125,19 @@ class PaperPlotter(plots.GetDistPlotter):
 
         return rf"{median_str}^{{+{plus_str}}}_{{-{minus_str}}}"
 
-    def add_1d(self, root, param, plotno=0, normalized=None, ax=None, title_limit=None, **kwargs):
+    def disable_quantile_lines(self) -> None:
+        self._disable_quantile_lines = True
+
+    def add_1d(
+            self, 
+            root, 
+            param, 
+            plotno=0, 
+            normalized=None, 
+            ax=None, 
+            title_limit=None,
+            **kwargs
+    ):
         param_info = self._check_param(root, param)
         result = super().add_1d(root, param_info, plotno=plotno, normalized=normalized, ax=ax, title_limit=title_limit, **kwargs)
 
@@ -171,9 +186,10 @@ class PaperPlotter(plots.GetDistPlotter):
         color = line_kwargs.get("color") or self.settings.axis_marker_color
         width = self._scaled_linewidth(self.settings.linewidth_contour)
 
-        axis.axvline(q_median, color=color, ls="--", lw=width, alpha=0.8)
-        axis.axvline(q_lower, color=color, ls="--", lw=width, alpha=0.6)
-        axis.axvline(q_upper, color=color, ls="--", lw=width, alpha=0.6)
+        if not self._disable_quantile_lines:
+            axis.axvline(q_median, color=color, ls="--", lw=width, alpha=0.8)
+            axis.axvline(q_lower, color=color, ls="--", lw=width, alpha=0.6)
+            axis.axvline(q_upper, color=color, ls="--", lw=width, alpha=0.6)
 
         label = param_info.label or param_info.name
         axis.set_title(
@@ -189,7 +205,8 @@ class PaperPlotter(plots.GetDistPlotter):
             latex_labels: list[str],
             runs: list[dict[str, np.ndarray]],
             colours: list[str],
-            paddings: list[float] | None = None
+            paddings: list[float] | None = None,
+            title_line_padding: float = 0.15
         ) -> None:
         '''
         After plotting multiple runs in a single triangle plot, annotate each 1D
@@ -230,8 +247,33 @@ class PaperPlotter(plots.GetDistPlotter):
             self.settings.axes_fontsize
         )
         base_y = 1.03
-        line_height = 0.15
+        line_height = title_line_padding
         text_x = 0.05
+
+        if paddings is not None:
+            assert len(paddings) == len(params), (
+                'List of paddings should have length equal to the number of '
+                'params plotted.'
+            )
+
+        # The stacked text can easily extend above the axes when there are many
+        # runs; reserve additional headroom before adding annotations.
+        if diag_axes:
+            y_span_needed = base_y + (len(runs) - 1) * line_height
+            overflow = max(0.0, y_span_needed - 1.0)
+            sample_ax = next((ax for ax in diag_axes if ax is not None), None)
+            if (overflow > 0.0) and (sample_ax is not None):
+                fig = sample_ax.figure
+                bbox = sample_ax.get_position()
+                extra_top = overflow * bbox.height
+                buffer = 0.02
+                current_top = getattr(fig.subplotpars, 'top', 0.9)
+                available = 1.0 - current_top
+                required = extra_top + buffer
+                if required > available:
+                    new_top = max(0.1, 1.0 - required)
+                    if new_top < current_top:
+                        fig.subplots_adjust(top=new_top)
 
         for param_idx, ax in enumerate(diag_axes):
             if ax is None:
@@ -249,8 +291,14 @@ class PaperPlotter(plots.GetDistPlotter):
                 interval_str = self._format_interval(q_median, q_lower, q_upper)
                 y_position = base_y + run_idx * line_height
                 color = colours[run_idx % len(colours)]
-                ax.text(
-                    text_x+(paddings[param_idx] if param_idx < len(paddings) else 0.0),
+
+                if paddings is None:
+                    extra_x = 0
+                else:
+                    extra_x = paddings[param_idx]
+
+                annotation = ax.text(
+                    text_x+extra_x,
                     y_position,
                     rf'${label} = {interval_str}$',
                     color=color,
@@ -259,6 +307,9 @@ class PaperPlotter(plots.GetDistPlotter):
                     transform=ax.transAxes,
                     fontsize=fontsize
                 )
+                annotation.set_clip_on(False)
+                if hasattr(self, 'extra_artists'):
+                    self.extra_artists.append(annotation)
 
 
 style_name = "paperplot"

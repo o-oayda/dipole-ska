@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 from tqdm import tqdm
 import warnings
-from typing import Generator, Sequence
+from typing import Generator, Optional, Sequence
 import re
 from matplotlib.patches import Patch
 
@@ -337,7 +337,8 @@ class MapPlotter:
             cmap: str,
             cmap_alpha: float,
             projview_dict: dict,
-            title_was_user_supplied: bool
+            title_was_user_supplied: bool,
+            all_titles: Optional[list[str]] = None
         ) -> tuple[Axes | list[Axes], Figure]:
         '''
         Internal helper to render one or many maps, optionally arranging them
@@ -348,6 +349,8 @@ class MapPlotter:
         :param cmap_alpha: Colormap transparency scaling.
         :param projview_dict: Final kwargs to pass to hp.projview.
         :param title_was_user_supplied: Whether user provided a title.
+        :param all_titles: If multiple maps have been supplied to the
+            MapPlotter, pass a list of titles to show on each subplot.
         :return: Axes (list when multiple maps) and Figure.
         '''
         n_maps = len(maps_to_plot)
@@ -392,6 +395,9 @@ class MapPlotter:
                 if base_title and not title_was_user_supplied:
                     map_projview_dict['title'] = f'{base_title} {idx + 1}'
 
+            if all_titles is not None:
+                map_projview_dict['title'] = all_titles[idx]
+
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore', category=UserWarning)
                 hp.projview(
@@ -430,6 +436,7 @@ class MapPlotter:
                         cmap: str = 'viridis',
                         cmap_alpha: float=1.0,
                         projview_kwargs: dict = {},
+                        all_titles: Optional[list[str]] = None
         ) ->  tuple[Axes | list[Axes], Figure]:
         '''
         Plot a density map (or multiple maps as subplots when provided).
@@ -439,17 +446,25 @@ class MapPlotter:
         :param cmap_alpha: Transparency of the colormap.
             0.0 is fully transparent, 1.0 is fully opaque.
         :param projview_kwargs: Keyword arguments to pass to `hp.projview`.
+        :param all_titles: If multiple maps have been supplied to the
+            MapPlotter, pass a list of titles to show on each subplot.
         
         :return: Tuple of the axes (single axes or list when subplots are
             created) and figure objects.
         '''
         projview_dict = self._build_projview_kwargs(projview_kwargs, 'Density map')
+        if all_titles is not None:
+            assert len(all_titles) == len(self.density_maps), (
+                'Number of titles must match number of density maps.'
+            )
+
         axes, fig = self._plot_maps(
             self.density_maps,
             cmap,
             cmap_alpha,
             projview_dict,
-            title_was_user_supplied='title' in projview_kwargs
+            title_was_user_supplied='title' in projview_kwargs,
+            all_titles=all_titles
         )
         return axes, fig
     
@@ -458,6 +473,7 @@ class MapPlotter:
                         cmap_alpha: float=1.0,
                         moving_average_kwargs: dict = {},
                         projview_kwargs: dict = {},
+                        all_titles: Optional[list[str]] = None
         ) ->  tuple[Axes | list[Axes], Figure]:
         '''
         Plot map smoothed with a moving average. When multiple maps are
@@ -470,6 +486,8 @@ class MapPlotter:
         :param moving_average_kwargs: Keyword arguments to pass to
             `MapPlotter.moving_average_smooth`.
         :param projview_kwargs: Keyword arguments to pass to `hp.projview`.
+        :param all_titles: If multiple maps have been supplied to the
+            MapPlotter, pass a list of titles to show on each subplot.
         
         :return: Tuple of the axes (single axes or list when subplots are
             created) and figure objects.
@@ -481,12 +499,18 @@ class MapPlotter:
         self.smoothed_map = self.smoothed_maps[0]
         
         projview_dict = self._build_projview_kwargs(projview_kwargs, 'Smoothed density map')
+        if all_titles is not None:
+            assert len(all_titles) == len(self.density_maps), (
+                'Number of titles must match number of density maps.'
+            )
+
         axes, fig = self._plot_maps(
             self.smoothed_maps,
             cmap,
             cmap_alpha,
             projview_dict,
-            title_was_user_supplied='title' in projview_kwargs
+            title_was_user_supplied='title' in projview_kwargs,
+            all_titles=all_titles
         )
         return axes, fig
 

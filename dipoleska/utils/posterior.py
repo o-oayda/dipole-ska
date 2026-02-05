@@ -319,7 +319,10 @@ class PosteriorMixin:
             legend_labels: list[str] | None = None,
             parameters: Sequence[str] | None = None,
             paddings: list[float] | None = None,
+            title_line_padding: float = 0.15,
             legend_location: tuple[float, float] | None = None,
+            colors: list[str] | None = None,
+            disable_quantile_lines: bool = False,
             **kwargs
         ) -> None:
         '''
@@ -355,9 +358,20 @@ class PosteriorMixin:
             of the list should be equal to the number of parameters being
             plotted. For parameters ['D', 'phi', 'theta'], a suitable paddings
             list is [0,0.13,0.13].
+        :param title_line_padding: If creating a corner with multiple runs,
+            adjust this value to change the spacing between the 1D marginal
+            titles. The default value should generally be sufficient, but
+            increasing it will add more spacing (and decreasing less spacing).
         :param legend_location: Optional tuple of (x_location, y_location) to
             adjust the legend position when plotting. For three parameters, a
             suitable location is (0.665, 0.655).
+        :param colors: Optional list of colors to use for each run when using
+            the getdist backend. The length of the list should be equal to
+            the number of runs being plotted. If None, a default set of
+            colors is used.
+        :param disable_quantile_lines: Choose whether or not to disable the
+            dashed lines demarking each parameter's credible interval in the 1D
+            marginals.
         '''
         if backend == 'corner':
             base_samples = np.asarray(self.samples, dtype=np.float64)
@@ -369,7 +383,14 @@ class PosteriorMixin:
                 else np.asarray(self.weights, dtype=np.float64)
             )
 
-        if paddings is not None and len(paddings) != len(parameters):
+        # we check paddings again (if params is None) in annotate_multi_run_intervals
+        if (
+                (paddings is not None)
+            and
+                (parameters is not None)
+            and
+                (len(paddings) != len(parameters))
+        ):
             raise ValueError("The number of paddings must match the number of parameters.")
         
         if legend_labels is not None and len(legend_labels) != len(self.comparison_runs)+1:
@@ -595,7 +616,11 @@ class PosteriorMixin:
                 mc.updateSettings({'ignore_limits': True})
                 mc_runs.append(mc)
 
+            # this returns an instance of PaperPlotter, we just call a method
+            # to disable the lines
             plotter = plots.get_subplot_plotter(style=paperplot_style.style_name)
+            if disable_quantile_lines:
+                plotter.disable_quantile_lines() # pyright: ignore[reportOptionalCall]
 
             default_triangle_options = {
                 'filled': True,
@@ -623,18 +648,23 @@ class PosteriorMixin:
                     new_colors = list(run_colors)
                     if len(original_solid_colors) > len(run_colors):
                         new_colors.extend(original_solid_colors[len(run_colors):])
-                    plotter.settings.solid_colors = new_colors
+                    plotter.settings.solid_colors = new_colors if colors is None else colors
+
+            if colors is not None:
+                run_colors = list(colors)[::-1]
 
             try:
                 plotter.triangle_plot(
                     mc_runs,
                     params=sanitized_names,
                     legend_loc=legend_location,
+                    contour_args={'alpha': 0.6},
+                    colors=colors,
                     **default_triangle_options
                 )
             finally:
                 if original_solid_colors is not None:
-                    plotter.settings.solid_colors = original_solid_colors
+                    plotter.settings.solid_colors = original_solid_colors if colors is None else colors
 
             if len(mc_runs) > 1 and run_colors is not None:
                 # GetDist draws datasets in reverse order for layering, so the colours
@@ -656,7 +686,8 @@ class PosteriorMixin:
                     latex_labels,
                     run_specs,
                     annotation_colors,
-                    paddings
+                    paddings,
+                    title_line_padding=title_line_padding
                 )
 
             if save_path is not None:
