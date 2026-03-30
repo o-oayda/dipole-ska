@@ -202,3 +202,5 @@ data/ska/mapcollections_input/*
 data/ska/mapcollections_24-11-25/*
 data/ska/mapcollections_input_24-11-25/*
 data/ska/fixed_maps_29-01-26/*
+data/ska/bright_maps_30-03-26/*
+!data/ska/*/.placeholder
