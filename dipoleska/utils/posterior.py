@@ -696,7 +696,7 @@ class PosteriorMixin:
                     os.makedirs(output_dir, exist_ok=True)
                 plotter.export(save_path)
 
-        plt.show()
+        # plt.show()
 
     def corner_plot_double(self,
             second_model: Self,
