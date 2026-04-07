@@ -696,8 +696,6 @@ class PosteriorMixin:
                     os.makedirs(output_dir, exist_ok=True)
                 plotter.export(save_path)
 
-        plt.show()
-
     def corner_plot_double(self,
             second_model: Self,
             coordinates: list[str] | None = None,
@@ -765,6 +763,7 @@ class PosteriorMixin:
     def posterior_predictive_check(self,
             n_samples: int = 5,
             model_callable: Callable | None = None,
+            save_path: str | None = None,
             **projview_kwargs
         ) -> None:
         '''
@@ -818,6 +817,13 @@ function to this method when instantiating from an ultranest run number.'''
                     'figure_width': 3
                 },
                 **projview_kwargs
+            )
+
+        if save_path is not None:
+            plt.savefig(
+                save_path,
+                bbox_inches='tight',
+                dpi=300
             )
 
     def sky_direction_posterior(self,

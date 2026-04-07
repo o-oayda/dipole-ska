@@ -1,0 +1,187 @@
+import gc
+import os
+from typing import Any, cast
+from dipoleska.models.priors import Prior
+from dipoleska.powerspectrum.posterior_power_spectrum import PosteriorPowerSpectrum
+from dipoleska.utils.map_process import MapProcessor
+from dipoleska.utils.map_read import MapCollectionLoader
+from dipoleska.utils.plotting import MapPlotter
+from dipoleska.models.multipole import Multipole
+import matplotlib.pyplot as plt
+import argparse
+import numpy as np
+import matplotlib as mpl
+import contextlib
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Fit multipoles to SKA maps."
+    )
+    parser.add_argument(
+        '--likelihood',
+        choices=['general_poisson', 'general_poisson_rms'],
+        default='general_poisson'
+    )
+    parser.add_argument(
+        '--no-plots',
+        action='store_true',
+        help='Disable all plotting so the script can run in headless environments.'
+    )
+    parser.add_argument(
+        '--ells',
+        type=int,
+        nargs='+',
+        default=[0, 1, 2],
+        help='Multipole orders to fit (only used for the multipole model).'
+    )
+    parser.add_argument(
+        '--collection-id',
+        required=True,
+        help='Identifier of the map collection to analyse.'
+    )
+    return parser
+
+
+def build_run_name(args: argparse.Namespace) -> str:
+    return (
+        f"s{args.snr_cut}_flux{args.lower_flux}_z{args.lower_z}"
+        f"_gal{args.gal_cut}_nside{args.nside}_ells{'-'.join(map(str, args.ells))}"
+    )
+
+
+def _get_mpi_rank() -> int:
+    """Best-effort MPI rank detection via common environment variables."""
+    for env_var in (
+        'OMPI_COMM_WORLD_RANK',
+        'PMI_RANK',
+        'PMIX_RANK',
+        'MV2_COMM_WORLD_RANK',
+    ):
+        value = os.environ.get(env_var)
+        if value is None:
+            continue
+        try:
+            return int(value)
+        except ValueError:
+            continue
+    return 0
+
+
+def main() -> None:
+    mpl.rcParams["text.usetex"] = False
+
+    OUTPUT_DIR = 'dipoleska/results/runs'
+
+    parser = build_parser()
+    args = parser.parse_args()
+    mpi_rank = _get_mpi_rank()
+    plot_enabled = mpi_rank == 0 and not args.no_plots # only plot on rank 0 worker
+
+    loader = MapCollectionLoader(use_base_rms=True)
+    collection_id = args.collection_id
+    print(f'Starting on map ID {collection_id}...')
+
+    with open(os.devnull, "w") as devnull, contextlib.redirect_stdout(devnull):
+        loader.load(filter_attrs={'id': collection_id})
+
+    loaded = loader.map_collections
+    loaded = cast(list, loaded)
+    if not loaded:
+        raise RuntimeError(f'Collection ID {collection_id} was not found.')
+    if len(loaded) > 1:
+        raise RuntimeError(f'Collection ID {collection_id} returned multiple matches.')
+    collection = loaded[0]
+
+    dmap = collection['files']['counts']['data']
+    rmsmap = collection['files']['rms']['data']
+
+    LIKELIHOOD = args.likelihood
+    run_name = f'{collection_id}_{LIKELIHOOD}_ells{'-'.join(map(str, args.ells))}'
+    RUN_DIR = os.path.join(OUTPUT_DIR, run_name)
+    os.makedirs(RUN_DIR, exist_ok=True)
+    
+    processor = None
+    masked_dmap = None
+    masked_rmsmap = None
+    model: Multipole | None = None
+
+    try:
+        processor = MapProcessor([dmap, rmsmap])
+        if 'gal10.0' in collection_id:
+            mask = 'gal10_ps'
+        elif 'gal5.0' in collection_id:
+            mask = 'gal5_ps'
+        else:
+            raise Exception('Not sure which mask to use yet.')
+        processor.mask(output_frame='C', load_from_file=mask)
+        masked_dmap, masked_rmsmap = processor.density_maps
+
+        if plot_enabled:
+            plotter = MapPlotter(masked_dmap)
+            _, fig = plotter.plot_density_map(
+                projview_kwargs={'badcolor': 'grey', 'coord': ['C', 'G']}
+            )
+            fig.savefig(os.path.join(RUN_DIR, 'dmap.pdf'), bbox_inches='tight')
+            _, fig = plotter.plot_smooth_map(
+                projview_kwargs={'badcolor': 'grey', 'coord': ['C', 'G']}
+            )
+            fig.savefig(os.path.join(RUN_DIR, 'smoothed_dmap.pdf'), bbox_inches='tight')
+
+            plt.close('all')
+
+        if 1 in args.ells:
+            prior = Prior(choose_prior={'M1': ['Uniform', 0., 0.05]})
+        else:
+            prior = None
+
+        model = Multipole(
+            masked_dmap,
+            ells=args.ells,
+            prior=prior,
+            likelihood=LIKELIHOOD,
+            rms_map=masked_rmsmap
+        )
+        step = any(ell > 1 for ell in args.ells)
+
+        model._disable_ultranest_logging()
+        model.run_nested_sampling(
+            step=step,
+            run_name=run_name, 
+            output_dir=OUTPUT_DIR,
+            run_kwargs={'viz_callback': False, 'show_status': False}
+        )
+
+        if plot_enabled:
+            model.corner_plot(
+                backend='getdist', coordinates=['equatorial', 'galactic'],
+                save_path=os.path.join(RUN_DIR, 'corner.pdf')
+            )
+            model.sky_direction_posterior(
+                coordinates=['equatorial', 'galactic'],
+                save_path=os.path.join(RUN_DIR, 'sky_proj.png'),
+                contour_levels=[1, 2]
+            )
+            model.posterior_predictive_check(
+                save_path=os.path.join(RUN_DIR, 'ppc.pdf'),
+                coord=['C', 'G']
+            )
+            plt.close('all')
+    finally:
+        loader.clear_cache()
+        del processor, masked_dmap, masked_rmsmap, model
+        gc.collect()
+
+        # posteriorps = PosteriorPowerSpectrum(
+        #     sample_chains=model.samples,
+        #     model=model.model,
+        #     likelihood=LIKELIHOOD,
+        #     sample_count=500
+        # )
+        # cl_mean, cl_std = posteriorps.power_spectrum_calculator()
+        # np.save(os.path.join(RUN_DIR, 'cl_mean.npy'), cl_mean)
+        # np.save(os.path.join(RUN_DIR, 'cl_std.npy'), cl_std)
+
+
+if __name__ == '__main__':
+     main()
