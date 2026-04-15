@@ -131,7 +131,11 @@ if __name__ == '__main__':
                 ells=ELLS
             )
             model.prior.change_prior(prior_index=-2, new_prior=['Uniform', -1., 1.])
-            model.run_nested_sampling(output_dir=RUN_OUT_DIR, run_name=run_name)
+            model.run_nested_sampling(
+                output_dir=RUN_OUT_DIR,
+                run_name=run_name,
+                step=True if 2 in ELLS else False
+            )
 
             model.corner_plot(
                 backend='getdist', coordinates=['equatorial', 'galactic'],
@@ -139,6 +143,6 @@ if __name__ == '__main__':
             )
             model.sky_direction_posterior(
                 coordinates=['equatorial', 'galactic'],
-                save_path=f'{save_dir}/sky_{run_name}.pdf'
+                save_path=f'{save_dir}/sky_{run_name}.png'
             )
             plt.close()
