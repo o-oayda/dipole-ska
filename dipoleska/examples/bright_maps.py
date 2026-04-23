@@ -137,10 +137,14 @@ if __name__ == '__main__':
                 step=True if 2 in ELLS else False
             )
 
-            model.corner_plot(
-                backend='getdist', coordinates=['equatorial', 'galactic'],
-                save_path=f'{save_dir}/corner_{run_name}.pdf'
-            )
+            try:
+                model.corner_plot(
+                    backend='getdist', coordinates=['equatorial', 'galactic'],
+                    save_path=f'{save_dir}/corner_{run_name}.pdf'
+                )
+            except ValueError as e:
+                print(f'Corner plot failed: {e}. Skipping...')
+
             model.sky_direction_posterior(
                 coordinates=['equatorial', 'galactic'],
                 save_path=f'{save_dir}/sky_{run_name}.png'
